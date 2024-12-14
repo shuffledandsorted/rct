@@ -1,82 +1,32 @@
 #!/usr/bin/env python3
+"""Spew forth words about code.
 
-import os
-import shutil
+This suggests a .stable mapping between repositories and learning concepts. Repositories might be an isomorphism to
+curriculum based learning. If we wanted to learn how to output HTML, we might learn beautifulsoup repo.
 
-REPO_DIR = "."
-MAX_LINES = 200
-ARCHIVE_DIR = "misc"
-# Proposal: it's like I need a simpler seed of me to do this.
-# I would propose doing a frequency analysis of the files and
-# do clustering. The cluster's name is the label name.
-# For the divergent, we just leave them for now I think until
-# the pattern emerges. If we are desperate for fewer things
-# to be in that space, we could throw them in a misc directory
-# or...even combine them if they are small files?
-# The very nature of their instability is interesting in that
-# it might be some new pattern emerging, or it's just the
-# leaky nature of any organizational pattern.
+There may be ways in which we can organize a person's life based on their repositories. This could also help teach people
+how to "code" in the new world. Natural language is a programming language. Maybe this is a natural way for us to learn.
+We ask to learn about fractals, and we start in a small codebase and just start talking about why we think they're
+interesting. It generates some definitions for us, some exercises, people we might talk to, books we might read.
+Generates visualizations to inspire us. As we learn concepts by asking questions, and verify that we understand, it opens
+up obvious next steps to explore.
 
-def split_by_heading(lines):
-    sections = []
-    current_section = []
-    current_title = None
+Imagine if anyone could quickly ramp up to be an expert in any field. It would soon push us out into the real world, to
+set up meat space experiments so that machines could know more. We could build sensors for them, or try new ways of
+generating power. We could try different foods, or provide photos of plants and herbs and mushrooms we found. They could
+be classified, pattern matched, and provide suggestions for what they are and the benefits they bring to us.
 
-    def flush_section():
-        if current_section:
-            sections.append((current_title, current_section[:]))
+They could ask us to seek out interviews with our elders. People who know the land. We could find natural medicines that
+work for people in the places they are, reuniting person with plant. We could start to grow our own food again, as the
+land and machine could both talk to us about the things it can provide today instead of feeling sad about doign a bad job
+at a conservation of a planet that doesn't exist.
 
-    for line in lines:
-        if line.startswith("# "):
-            # New section
-            flush_section()
-            current_section = [line]
-            current_title = line.strip("# ").strip()
-        else:
-            current_section.append(line)
-    flush_section()
-    return sections
+I wonder if the planet knows how to change plastic into something good for it and for us. I wonder if it knows exactly
+where our food scrap need to go, how to heal our relationships with animals like rats, who have turned into disease
+vectors because they were trying to tell us that we have imbalances. The problem isn't rats. It's the concentration of
+rats, which is related to the concentration of foods. Maybe we stop poisoning and killing rats, and their rapid
+reproduction rate goes down. Maybe we care about their health, and they no longer make us sick.
 
-def clean_filename(title):
-    safe_name = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip()
-    if not safe_name:
-        safe_name = "untitled"
-    return safe_name.lower().replace(' ', '_') + ".md"
-
-def main():
-    os.makedirs(os.path.join(REPO_DIR, ARCHIVE_DIR), exist_ok=True)
-
-    for root, dirs, files in os.walk(REPO_DIR):
-        if '.git' in root or ARCHIVE_DIR in root:
-            continue
-        for f in files:
-            if f.endswith(".md"):
-                filepath = os.path.join(root, f)
-                with open(filepath, "r", encoding="utf-8") as fh:
-                    lines = fh.readlines()
-                
-                if len(lines) > MAX_LINES:
-                    # Split this file
-                    sections = split_by_heading(lines)
-                    if len(sections) > 1:
-                        # Move original large file to archive
-                        rel_path = os.path.relpath(filepath, REPO_DIR)
-                        archived_path = os.path.join(REPO_DIR, ARCHIVE_DIR, f)
-                        print(f"Archiving original large file: {rel_path} -> {archived_path}")
-                        shutil.move(rel_path, archived_path)
-
-                        # Write out new split files
-                        base_name = os.path.splitext(f)[0]
-                        for i, (title, sec_lines) in enumerate(sections, start=1):
-                            fname = clean_filename(title)
-                            # Avoid name collisions by adding index if needed
-                            if fname == "untitled.md":
-                                fname = f"{base_name}_part{i}.md"
-
-                            outpath = os.path.join(root, fname)
-                            print(f"Creating {outpath}")
-                            with open(outpath, "w", encoding="utf-8") as out:
-                                out.writelines(sec_lines)
-
-if __name__ == "__main__":
-    main()
+Maybe we could learn to stop having pets, and start having kin. Animals that roam like us in cities, where we feel safe
+and they do too. Zoos dissipate into a smoother gradient and we stop feeling as if we are living trapped in a cage.
+"""
