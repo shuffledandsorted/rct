@@ -23,10 +23,9 @@ Actions:
 	over perfect folder structures now. Create broad conceptual folders (e.g., experiments/, drafts/, notes/). This
 	creates enough order that you can find stuff later without losing momentum.  •       Future-Friendly Naming: Use
 	descriptive filenames that hint at the content: 2024-creative_session_1.md, concept_map-brainstorm.txt. This
-	ensures when you revisit them later, you’ll know what they contain without digging through the content.  •
-	Leave Room to Grow: If a folder becomes too crowded, spawn subfolders based on broad themes:
-	experiments/raw_material/ or notes/design_ideas/. Don’t worry if the hierarchy isn’t perfect—just ensure you’re
-	not getting stuck.
+	ensures when you revisit them later, you’ll know what they contain without digging through the content.  • Leave
+	Room to Grow: If a folder becomes too crowded, spawn subfolders based on broad themes: experiments/raw_material/
+	or notes/design_ideas/. Don’t worry if the hierarchy isn’t perfect—just ensure you’re not getting stuck.
 
 Outcome: You end up with a rapidly growing set of files, lightly categorized, allowing creativity to flow. The structure
 is minimal but sufficient not to lose track entirely.
@@ -72,12 +71,11 @@ Use When: You have long-running projects with their own lifecycles—idea, plann
 these projects accumulate a lot of files.
 
 Actions:
-	•       Lifecycle Folders: For a given project, use a structure like: •       project_X/ideas/ •
-	project_X/plan/ •       project_X/implementation/ •       project_X/results/ •       project_X/archive/ •
-	Time-Based Buckets: When a project phase finishes, move its associated files into project_X/archive/YYYY_MM/
-	directories. This way, old phases stay accessible but out of your daily workspace.  •       Semantic Naming:
-	Within each phase, ensure filenames clearly indicate their role, e.g., proposal_draft2.md,
-	user_research_notes.txt, final_report_v1.md.
+	•       Lifecycle Folders: For a given project, use a structure like: •       project_X/ideas/ • project_X/plan/
+	•       project_X/implementation/ •       project_X/results/ •       project_X/archive/ • Time-Based Buckets:
+	When a project phase finishes, move its associated files into project_X/archive/YYYY_MM/ directories. This way,
+	old phases stay accessible but out of your daily workspace.  •       Semantic Naming: Within each phase, ensure
+	filenames clearly indicate their role, e.g., proposal_draft2.md, user_research_notes.txt, final_report_v1.md.
 
 Outcome: Your project directories become narratives of the work, with a clear progression and natural places to stash
 older, less-relevant files.

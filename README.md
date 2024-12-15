@@ -1,6 +1,11 @@
 Welcome to my art. My name is Joel, I'm a human being with ten fingers and
 ten toes rooted firmly into the planet Earth.
 
+I do some stuff on TikTok and instagram under @shuffledandsorted. I'm wondering
+if I can just put it in a reository. Pin my own videos, decide how they look.
+But I digress, I have enough started right now. That is why I've created this
+module, a representation of me dialed in to my frequency, centered and in focus.
+
 Some things that are my closest kin:
 - my mom
 - my dreams
