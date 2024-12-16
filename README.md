@@ -10,21 +10,18 @@ Actual stable code is in `src/`. Not much to see yet.
 
 # Science / ML
 
-For the nerds: you may notice there's a lot of potential to make yourself
-famous or make yourself wealthy. Grab a text file, feed it to chat GTP, profit.
-
-Be careful, know what you're doing, if there's stuff you are inspired by, get
-to work, it's too much for one dude. Life is abundance.  Remember that things
-have to flow, give me credit for where it's due. See `LICENSE`.  I continue to
-watch my ego and make sure it's not going to trip me up.  I've had a lot of
-hard lessons, and you should be confident you understand my spirituality before
-you get too far ahead of yourself. If you feel the need to race, reach out to
-me, you will enjoy this a lot more if we find more understanding!
+For the nerds: I think there's some potentially great ideas in here. If you
+start working on something, please lmk! Watch out for chatgpt dizzy symptoms.
+Sometimes it feels like you're really onto something if you've been coding
+for too long, like it makes these mirages. Take lots of breaks.
 
 # Businessers
 
 See both above and below. If you'd like to do a startup with my help, reach
-out, let's collaborate.
+out, let's collaborate! I would love to get credit (and paid) for the
+ideas you start developing. I think we'll do better together. My ideas tend
+to be everybody-wins scenarios, which I think are pretty low hanging fruit
+once you have the right philosophy keyed in.
 
 # Spiritualists / Skeptics
 
