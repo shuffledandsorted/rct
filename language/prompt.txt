@@ -1,0 +1,24 @@
+Let's create a model of an autonomous agent framework, built recursively upon
+itself and represented as a tree.
+
+Let T be the tree = (A1,A2,...,AN), a discrete wave function equalling the sum
+of wave functions. The probability space is a probability distribution P
+describing a manifold, where P = T * T. P describes the probability of an agent
+being in any position of a manifold M at a given time t. A contract C defines a
+fixed point combinator on T, conserving an energy E0 and mapping a set of
+agents to a new set of agents. A game is defined by a time series with an
+initial energy G(t)=E0 and G(t)=G(t-1).
+
+As mentioned above, the probability space is a manifold because it converges,
+it's basically a Mandelbrot set where c=0.
+Since C is a fixed point combinator, we can use Gaussian kernels as the operator
+to guarantee continuity between states.
+
+Each agent models the world as a finite set of agents, including itself.
+Agents positions are stable (converge to a position) because their
+probability field squared = an iterative function fc(z) = z^2.
+
+The Tree, an agent, does not have a bounded lifetime.
+A bound agent Ab is an agent with an ending tf, where G(tf) = ((A1,A2,A3,...AN), C)
+where Ab is not in the agent set.
+
