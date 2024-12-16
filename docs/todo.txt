@@ -1,0 +1,4 @@
+Use JS polyfill something like 
+https://github.com/w3c/mathml-polyfills
+
+To properly render equations.
