@@ -1,5 +1,6 @@
 # Things I want to see that aren't ready to share
 dot.*
+dot/
 
 # Ignore Python bytecode files
 __pycache__/
