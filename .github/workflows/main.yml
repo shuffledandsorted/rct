@@ -1,0 +1,42 @@
+name: HTML to PDF
+  # You may pin to the exact commit or the version.
+  # uses: fifsky/html-to-pdf-action@f53ada614db3051d00333bac1fda7894dbce585d
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# Default to bash
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+       - name: HTML to PDF
+         uses: fifsky/html-to-pdf-action@master
+         with:
+            # html file path
+            htmlFile: docs/paper/unified.html
+            # output file path
+            outputFile: docs/RCT.pdf
+            # PDF options as described here:
+            # https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#pagepdfoptions -
+            # Needs to be in JSON format, e.g. `{"format": "A4", "pageRanges": "1"}`
+            pdfOptions: '{"format": "A4", "margin": {"top": "10mm", "left": "10mm", "right": "10mm", "bottom": "10mm"}}'
