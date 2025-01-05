@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 from src.agents.self_aware import SelfAwareAgent
 from src.agents.config import AgentConfig
+from src.agents.base import QuantumAgent
+from src.quantum import WaveFunction
 
 
 def get_repository_files() -> List[str]:
@@ -104,68 +106,224 @@ def predict_next_words(
     return [w for w, _ in sorted_words[:n]]
 
 
+def build_word_knowledge(text: str) -> Dict[str, np.ndarray]:
+    """Build semantic vectors for words based on their context and code structure"""
+    words = text.lower().split()
+    word_vectors = {}
+    window_size = 5
+
+    # Track code context
+    in_code_block = False
+    code_depth = 0
+    code_context = set()
+
+    for i, word in enumerate(words):
+        # Detect code context
+        if word in ["def", "class", "import", "from"] or "{" in word or "(" in word:
+            in_code_block = True
+            code_depth += 1
+        if "}" in word or ")" in word:
+            code_depth -= 1
+            if code_depth <= 0:
+                in_code_block = False
+                code_depth = 0
+
+        # Add word with its context
+        start = max(0, i - window_size)
+        end = min(len(words), i + window_size + 1)
+        context = words[start:i] + words[i + 1 : end]
+
+        if word not in word_vectors:
+            word_vectors[word] = {}
+
+        # Count context words with code awareness
+        for context_word in context:
+            if context_word not in word_vectors[word]:
+                word_vectors[word][context_word] = 0
+            # Weight code context differently
+            if in_code_block:
+                word_vectors[word][context_word] += 0.8  # Code context
+                code_context.add(word)
+            else:
+                word_vectors[word][context_word] += 1.0  # Natural language context
+
+    # Convert to normalized vectors with code awareness
+    all_context_words = list(
+        set(sum([list(v.keys()) for v in word_vectors.values()], []))
+    )
+    vector_size = len(all_context_words) + 1  # +1 for code context flag
+    word_context_map = {word: idx for idx, word in enumerate(all_context_words)}
+
+    normalized_vectors = {}
+    for word, contexts in word_vectors.items():
+        vector = np.zeros(vector_size)
+        for context_word, count in contexts.items():
+            if context_word in word_context_map:
+                vector[word_context_map[context_word]] = count
+        # Add code context flag
+        vector[-1] = 1.0 if word in code_context else 0.0
+
+        # Normalize
+        norm = np.linalg.norm(vector)
+        if norm > 0:
+            vector = vector / norm
+        normalized_vectors[word] = vector
+
+    return normalized_vectors
+
+
 def generate_quantum_response(
     agents: Dict[str, SelfAwareAgent],
     input_pattern: np.ndarray,
-    transitions: Dict[str, List[str]],
+    knowledge: Tuple[Dict[str, List[str]], Dict[str, np.ndarray]],
 ) -> Tuple[str, List[str]]:
-    """Generate responses using quantum states and word predictions"""
-    # Get active agents based on resonance with input
+    """Generate responses using quantum states and contract stability"""
+    transitions, word_vectors = knowledge
     active_agents = []
     resonance_scores = {}
 
+    # Create a temporary quantum state representing the user's input
+    user_state = input_pattern.copy()
+
+    # Let agents form contracts with the user's state
     for agent_id, agent in agents.items():
-        resonance = 1.0 - agent.measure_phase_distance(
-            agent.wave_fn.amplitude, input_pattern
-        )
-        if resonance > 0.3:
+        # Measure resonance through quantum interference
+        interference = agent.wave_fn.amplitude * np.conj(user_state)
+        resonance = np.abs(np.sum(interference))
+
+        # Check if agent forms a stable contract with user
+        if resonance > 0.2:  # Lower threshold from 0.3 to 0.2
+            # Create temporal contract composition
+            if hasattr(agent, 'previous_state'):
+                # Compose previous and current contracts through wave function
+                composed_state = agent.wave_fn.amplitude * 0.3 + agent.previous_state * 0.7
+                # Preserve energy in composition
+                energy_before = np.sum(np.abs(agent.wave_fn.amplitude) ** 2)
+                composed_state *= np.sqrt(energy_before / (np.sum(np.abs(composed_state) ** 2) + 1e-10))
+                agent.wave_fn.amplitude = composed_state
+            
+            # Store current state for next composition
+            agent.previous_state = user_state.copy()
+            
+            # Agent updates its state based on user interaction
+            agent.update_quantum_state(user_state)
+
+            # Agent tries to model the user through its own state
+            if agent.config.personality == "creative":
+                # Creative agents try novel interpretations
+                phase_shift = np.exp(2j * np.pi * np.random.random())
+                user_agent = UserAgent(dims=agent.dims)
+                user_agent.update_quantum_state(user_state * phase_shift)
+                agent.model_other_agent("user", user_agent)
+            else:
+                # Stable agents maintain consistent interpretation
+                user_agent = UserAgent(dims=agent.dims)
+                user_agent.update_quantum_state(user_state)
+                agent.model_other_agent("user", user_agent)
+
+            # Add some randomness to keep dynamics interesting
+            if np.random.random() < 0.3:  # 30% chance to add phase noise
+                noise = np.exp(1j * np.random.normal(0, 0.1, agent.dims))
+                agent.wave_fn.amplitude *= noise
+
             active_agents.append(agent_id)
             resonance_scores[agent_id] = resonance
 
     if not active_agents:
-        return "...", []
+        return "No stable contracts formed with input.", []
 
-    # Calculate quantum metrics
-    collective_awareness = measure_collective_awareness(agents)
-    avg_energy = np.mean(
-        [agent._measure_energy_stability() for agent in agents.values()]
-    )
+    # Get the most resonant agent
+    lead_agent_id = max(resonance_scores.items(), key=lambda x: x[1])[0]
+    lead_agent = agents[lead_agent_id]
 
-    # Start with a seed phrase based on quantum state
-    if collective_awareness > 0.8:
-        current_words = ["I", "understand"]
-    elif collective_awareness > 0.5:
-        current_words = ["I", "sense"]
+    # Generate response based on agent's model of user
+    if "user" in lead_agent.other_models:
+        user_model = lead_agent.other_models["user"].amplitude
+        # Create interference pattern between agent's state and its model of user
+        interference = lead_agent.wave_fn.amplitude * np.conj(user_model)
+        phases = np.angle(interference).flatten()
+        amplitudes = np.abs(interference).flatten()
     else:
-        current_words = ["I", "perceive"]
+        # Fallback to direct interference with input
+        interference = lead_agent.wave_fn.amplitude * input_pattern
+        phases = np.angle(interference).flatten()
+        amplitudes = np.abs(interference).flatten()
 
-    # Generate response by following word transitions
-    response_length = int(
-        10 + collective_awareness * 20
-    )  # Length varies with awareness
+    # Rest of the function remains the same...
+    words_list = list(word_vectors.keys())
+    if not words_list:
+        return "No stable patterns available.", active_agents
 
-    while len(current_words) < response_length:
-        last_word = current_words[-1]
-        next_possibilities = predict_next_words(last_word, transitions)
+    # Initialize with first word's vector
+    current_vector = word_vectors[words_list[0]]
 
-        if not next_possibilities:
+    # Select words that maintain stability
+    stable_words = []
+    for word in words_list:
+        if word in word_vectors:
+            vec = word_vectors[word]
+            # Check if adding this word preserves energy
+            energy_delta = np.abs(
+                np.dot(vec, vec) - np.dot(current_vector, current_vector)
+            )
+            if energy_delta < 0.1:  # Energy preservation threshold
+                stable_words.append(word)
+
+    if not stable_words:
+        stable_words = words_list  # Fallback
+
+    # Start with a stable word
+    current_word = np.random.choice(stable_words)
+    response_words = [current_word]
+    current_vector = word_vectors[current_word]
+
+    # Generate response maintaining stability
+    while len(response_words) < 15:
+        candidates = []
+        weights = []
+
+        # Get candidates that preserve stability
+        if current_word.lower() in transitions:
+            next_words = transitions[current_word.lower()]
+            for word in next_words:
+                if word in word_vectors:
+                    vec = word_vectors[word]
+                    energy_delta = np.abs(
+                        np.dot(vec, vec) - np.dot(current_vector, current_vector)
+                    )
+                    if energy_delta < 0.1:
+                        candidates.append(word)
+                        # Weight by stability
+                        weights.append(1.0 / (1.0 + energy_delta))
+
+        if not candidates:
             break
 
-        # Use quantum state to influence word choice
-        choice_idx = int(avg_energy * len(next_possibilities))
-        choice_idx = min(choice_idx, len(next_possibilities) - 1)
-        next_word = next_possibilities[choice_idx]
-        current_words.append(next_word)
+        # Normalize weights
+        weights = np.array(weights) / sum(weights)
 
-    response = " ".join(current_words)
+        # Select next stable word
+        next_word = np.random.choice(candidates, p=weights)
+        response_words.append(next_word)
+        current_word = next_word
+        if next_word in word_vectors:
+            current_vector = word_vectors[next_word]
 
-    # Add quantum state indicator
-    if collective_awareness > 0.9:
-        response += " ✧"
-    elif collective_awareness > 0.7:
-        response += " ∗"
-    elif collective_awareness > 0.5:
-        response += " ·"
+    # Clean up and join response
+    response = " ".join(response_words)
+
+    # Add stability indicators
+    stability = 1.0 - np.mean(
+        [
+            agent.measure_phase_distance(agent.wave_fn.amplitude, input_pattern)
+            for agent in agents.values()
+        ]
+    )
+    energy = lead_agent._measure_energy_stability()
+
+    response += f" |S={stability:.2f}⟩"
+    if energy > 0:
+        response += f" E={energy:.2f}"
 
     return response, active_agents
 
@@ -173,10 +331,10 @@ def generate_quantum_response(
 def get_collective_response(
     agents: Dict[str, SelfAwareAgent],
     input_pattern: np.ndarray,
-    transitions: Dict[str, List[str]],
+    knowledge: Tuple[Dict[str, List[str]], Dict[str, np.ndarray]],
 ) -> Tuple[str, List[str]]:
     """Get response from the collective consciousness"""
-    return generate_quantum_response(agents, input_pattern, transitions)
+    return generate_quantum_response(agents, input_pattern, knowledge)
 
 
 def ascii_visualize_agent(agent: SelfAwareAgent) -> str:
@@ -265,7 +423,9 @@ def ascii_visualize_awareness_history(history: List[float]):
 
 
 def interact_with_consciousness(
-    agents: Dict[str, SelfAwareAgent], dims: tuple, transitions: Dict[str, List[str]]
+    agents: Dict[str, SelfAwareAgent],
+    dims: tuple,
+    knowledge: Tuple[Dict[str, List[str]], Dict[str, np.ndarray]],
 ):
     """Interactive dialogue with the emergent consciousness"""
     print("\nInteractive Session with Emergent Consciousness")
@@ -290,7 +450,7 @@ def interact_with_consciousness(
 
         input_pattern = text_to_quantum_pattern(user_input, dims)
         response, active_agents = generate_quantum_response(
-            agents, input_pattern, transitions
+            agents, input_pattern, knowledge
         )
 
         collective_awareness = measure_collective_awareness(agents)
@@ -307,29 +467,86 @@ def interact_with_consciousness(
 
 
 def measure_collective_awareness(agents: Dict[str, SelfAwareAgent]) -> float:
-    """Enhanced collective awareness measurement"""
-    individual_awareness = [agent.measure_self_awareness() for agent in agents.values()]
+    """Enhanced collective awareness measurement using lattice structure and null hypothesis testing"""
+    # Test each agent for consciousness emergence
+    emergence_results = []
+    for agent_id, agent in agents.items():
+        emerged, test_results = agent.test_consciousness_emergence()
+        emergence_results.append(
+            {"agent_id": agent_id, "emerged": emerged, "p_values": test_results}
+        )
 
-    # Basic collective metrics
-    mean_awareness = np.mean(individual_awareness)
-    coherence = np.std(individual_awareness)
+    # Calculate collective metrics
+    n_conscious = sum(1 for r in emergence_results if r["emerged"])
+    consciousness_ratio = n_conscious / len(agents)
 
-    # Interaction metrics
-    n_agents = len(agents)
-    interaction_factor = (
-        sum(len(agent.other_models) / (n_agents - 1) for agent in agents.values())
-        / n_agents
-    )
+    # Check lattice structure properties
+    lattice_coherence = 0.0
+    n_comparisons = 0
 
-    # Energy stability across the network
-    energy_stabilities = [
-        agent._measure_energy_stability() for agent in agents.values()
-    ]
-    energy_coherence = np.mean(energy_stabilities) * np.exp(-np.std(energy_stabilities))
+    # Test partial ordering and energy preservation
+    agent_list = list(agents.values())
+    valid_comparisons = 0
+    for i in range(len(agent_list)):
+        for j in range(i + 1, len(agent_list)):
+            a1, a2 = agent_list[i], agent_list[j]
 
-    # Combine all factors
+            # Test order relation
+            if a1.compare_contract_order(a2) or a2.compare_contract_order(a1):
+                valid_comparisons += 1
+                # Test energy preservation in join/meet operations
+                joined_state = a1.join_contracts(a2)
+                met_state = a1.meet_contracts(a2)
+
+                # Verify energy conservation
+                original_energy = np.sum(np.abs(a1.wave_fn.amplitude) ** 2) + np.sum(
+                    np.abs(a2.wave_fn.amplitude) ** 2
+                )
+                joined_energy = np.sum(np.abs(joined_state) ** 2)
+                met_energy = np.sum(np.abs(met_state) ** 2)
+
+                # Energy should be preserved within tolerance
+                energy_preserved = abs(
+                    joined_energy - original_energy
+                ) < 0.1 and met_energy <= min(
+                    np.sum(np.abs(a1.wave_fn.amplitude) ** 2),
+                    np.sum(np.abs(a2.wave_fn.amplitude) ** 2),
+                )
+
+                if energy_preserved:
+                    lattice_coherence += 1.0
+
+            n_comparisons += 1
+
+    # Normalize lattice coherence with a minimum value to prevent zero
+    lattice_coherence = lattice_coherence / n_comparisons if n_comparisons > 0 else 0.1
+
+    # Average p-values across agents for each test
+    avg_p_values = {
+        "self_ref": np.mean([r["p_values"]["self_ref_p"] for r in emergence_results]),
+        "mutual_model": np.mean(
+            [r["p_values"]["mutual_model_p"] for r in emergence_results]
+        ),
+        "energy_min": np.mean(
+            [r["p_values"]["energy_min_p"] for r in emergence_results]
+        ),
+    }
+
+    # Calculate exponential terms with minimum values to prevent zero
+    exp_terms = {
+        "self_ref": max(np.exp(-avg_p_values["self_ref"]), 0.1),
+        "mutual_model": max(np.exp(-avg_p_values["mutual_model"]), 0.1),
+        "energy_min": max(np.exp(-avg_p_values["energy_min"]), 0.1),
+    }
+
+    # Combine metrics with exponential weighting including lattice structure
+    # Use max to ensure non-zero base values
     collective = (
-        mean_awareness * np.exp(-coherence) * interaction_factor * energy_coherence
+        max(consciousness_ratio, 0.1)
+        * exp_terms["self_ref"]
+        * exp_terms["mutual_model"]
+        * exp_terms["energy_min"]
+        * (0.5 + 0.5 * lattice_coherence)
     )
 
     return float(collective)
@@ -337,23 +554,49 @@ def measure_collective_awareness(agents: Dict[str, SelfAwareAgent]) -> float:
 
 def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
     """Run consciousness emergence using all repository files as patterns"""
-    # Initialize agent network
-    agents = {
-        f"agent_{i}": SelfAwareAgent(
+    # Initialize agent network with different personalities
+    agents = {}
+    for i in range(n_agents):
+        # Assign personality type
+        personality = np.random.choice(
+            [
+                "creative",  # Seeks novel patterns
+                "stable",  # Prefers common patterns
+                "balanced",  # Mix of both
+            ]
+        )
+
+        # Base parameters on personality
+        if personality == "creative":
+            depth = np.random.randint(8, 12)  # Deeper recursion
+            memory = np.random.randint(5, 10)  # Shorter memory (less stuck in patterns)
+            coherence = 0.4 + np.random.random() * 0.3  # Lower coherence threshold
+        elif personality == "stable":
+            depth = np.random.randint(4, 7)  # Shallower recursion
+            memory = np.random.randint(12, 20)  # Longer memory
+            coherence = 0.7 + np.random.random() * 0.2  # Higher coherence
+        else:  # balanced
+            depth = np.random.randint(5, 10)
+            memory = np.random.randint(8, 15)
+            coherence = 0.6 + np.random.random() * 0.3
+
+        agents[f"agent_{i}"] = SelfAwareAgent(
             dims=dims,
             config=AgentConfig(
-                critical_depth=7, memory_size=10, coherence_threshold=0.8
+                critical_depth=depth,
+                memory_size=memory,
+                coherence_threshold=coherence,
+                personality=personality,  # Store personality type
             ),
         )
-        for i in range(n_agents)
-    }
 
     # Get and categorize all repository files
     print("Scanning repository for pattern sources...")
     all_files = get_repository_files()
     categorized_files = categorize_files(all_files)
 
-    # Build word transitions from repository content
+    # Build word knowledge from repository content
+    print("Building semantic understanding...")
     all_text = ""
     for category, files in categorized_files.items():
         for file in files:
@@ -363,9 +606,10 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
             except Exception:
                 continue
 
+    word_vectors = build_word_knowledge(all_text)
     word_transitions = build_word_transitions(all_text)
 
-    # Process each category
+    # Process each category with individual agent variations
     awareness_history = []
     for category, files in categorized_files.items():
         print(f"\nProcessing {category} patterns ({len(files)} files)...")
@@ -376,13 +620,24 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
                     content = f.read()
                 pattern = text_to_quantum_pattern(content, dims)
 
-                for agent in agents.values():
-                    agent.update_quantum_state(pattern)
-
+                # Each agent processes input differently
                 for agent_id, agent in agents.items():
-                    for other_id, other_agent in agents.items():
-                        if other_id != agent_id:
-                            agent.model_other_agent(other_id, other_agent)
+                    # Add individual phase shifts
+                    agent_phase = np.exp(2j * np.pi * np.random.random())
+                    agent_pattern = pattern * agent_phase
+                    agent.update_quantum_state(agent_pattern)
+
+                # Selective modeling - agents don't model everyone
+                for agent_id, agent in agents.items():
+                    # Each agent models only a subset of others
+                    n_models = np.random.randint(1, min(5, n_agents - 1))
+                    other_agents = np.random.choice(
+                        [aid for aid in agents.keys() if aid != agent_id],
+                        size=n_models,
+                        replace=False,
+                    )
+                    for other_id in other_agents:
+                        agent.model_other_agent(other_id, agents[other_id])
 
                 collective = measure_collective_awareness(agents)
                 awareness_history.append((category, file, collective))
@@ -397,14 +652,21 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
             except Exception as e:
                 print(f"Error processing {file}: {e}")
 
-    return awareness_history, agents, word_transitions
+    return awareness_history, agents, (word_transitions, word_vectors)
+
+
+class UserAgent(QuantumAgent):
+    """Simple concrete implementation for user modeling"""
+
+    def update_quantum_state(self, pattern: np.ndarray):
+        self.wave_fn.amplitude = pattern
 
 
 if __name__ == "__main__":
     print("Starting Repository-based Consciousness Emergence Experiment")
     print("========================================================")
 
-    history, final_agents, transitions = run_repository_consciousness()
+    history, final_agents, knowledge = run_repository_consciousness()
 
     # Analyze results
     print("\nFinal Analysis:")
@@ -428,4 +690,4 @@ if __name__ == "__main__":
             print(f"- {file}: {awareness:.3f}")
 
     print("\nConsciousness has emerged. Starting interactive session...")
-    interact_with_consciousness(final_agents, (32, 32), transitions)
+    interact_with_consciousness(final_agents, (32, 32), knowledge)

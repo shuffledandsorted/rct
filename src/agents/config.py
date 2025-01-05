@@ -2,24 +2,18 @@ from dataclasses import dataclass
 from typing import Dict, Any
 
 
-@dataclass
 class AgentConfig:
-    """Configuration parameters for quantum agents"""
-    # Detection parameters
-    detection_threshold: float = 0.5
-    spawn_threshold: float = 0.8
-    coherence_threshold: float = 0.7
-    
-    # Memory parameters
-    memory_size: int = 5
-    decay_rate: float = 0.1
-    
-    # Feature detection parameters
-    min_feature_strength: float = 0.3
-    max_children: int = 5
-    
-    # Self-awareness parameters
-    critical_depth: int = 5  # Minimum recursive depth for stable self-awareness
+    def __init__(
+        self,
+        critical_depth: int = 7,
+        memory_size: int = 10,
+        coherence_threshold: float = 0.8,
+        personality: str = "balanced"
+    ):
+        self.critical_depth = critical_depth
+        self.memory_size = memory_size
+        self.coherence_threshold = coherence_threshold
+        self.personality = personality
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "AgentConfig":
