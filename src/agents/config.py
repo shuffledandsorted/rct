@@ -18,6 +18,9 @@ class AgentConfig:
     min_feature_strength: float = 0.3
     max_children: int = 5
     
+    # Self-awareness parameters
+    critical_depth: int = 5  # Minimum recursive depth for stable self-awareness
+    
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "AgentConfig":
         """Create config from dictionary, using defaults for missing values"""
