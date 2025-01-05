@@ -13,6 +13,10 @@ class TemporalMixin:
         self.temporal_memory: List[np.ndarray] = []
         self.config = config or AgentConfig()
 
+    def measure_phase_distance(self, state1: np.ndarray, state2: np.ndarray) -> float:
+        """Measure phase difference between two states."""
+        return np.abs(np.angle(np.sum(state1 * np.conjugate(state2))))
+
     def get_past_state(self) -> Optional[np.ndarray]:
         """Get aggregated past state if available"""
         if self.temporal_memory:

@@ -143,7 +143,6 @@ def test_ambiguous_interpretation():
     assert flow_features and any(f["strength"] > 0.1 for f in flow_features), \
         f"Flow agent should maintain moderate interpretation, got strengths: {[f['strength'] for f in (flow_features or [])]}"
 
-
 def test_flow_vs_traditional():
     """Compare how agents handle ambiguous sequences"""
     # Create test sequence with stronger ambiguity
