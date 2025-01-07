@@ -1,8 +1,8 @@
 import numpy as np
 from typing import Optional
 
-from agents.temporal import TemporalMixin
-from agents.config import AgentConfig
+from ..agents.temporal import TemporalMixin
+from ..agents.config import AgentConfig
 from .base import QuantumContract
 
 

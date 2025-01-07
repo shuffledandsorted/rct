@@ -1,0 +1,115 @@
+import numpy as np
+from typing import List, Optional
+
+def quantum_normalize(state: np.ndarray, min_energy: float = 1e-10) -> np.ndarray:
+    """Normalize quantum state while preserving energy levels and phase relationships."""
+    prob_amplitudes = np.abs(state) ** 2
+    total_energy = np.sum(prob_amplitudes)
+    
+    if total_energy < min_energy:
+        base_energy = min_energy / state.size
+        min_amplitudes = np.full_like(prob_amplitudes, base_energy)
+        phases = np.angle(state)
+        return np.sqrt(min_amplitudes) * np.exp(1j * phases)
+    
+    return state / np.sqrt(total_energy)
+
+def calculate_geodesic_collapse(state1: np.ndarray, state2: np.ndarray, t: float = 0.5) -> np.ndarray:
+    """Calculate geodesic path between quantum states and collapse to point t."""
+    # First align phases between states
+    overlap = np.sum(np.conj(state1) * state2)
+    phase_factor = np.exp(1j * np.angle(overlap))
+    aligned_state2 = state2 * phase_factor
+    
+    # Calculate geodesic angle
+    cos_theta = np.real(np.sum(np.conj(state1) * aligned_state2))
+    theta = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+    
+    # If states are effectively identical, return first state
+    if np.abs(theta) < 1e-10:
+        return state1
+        
+    # Calculate geodesic path
+    sin_theta = np.sin(theta)
+    if sin_theta < 1e-10:
+        return state1
+        
+    # Interpolate along geodesic while preserving phase
+    collapsed = (np.sin((1-t)*theta) * state1 + np.sin(t*theta) * aligned_state2) / sin_theta
+    
+    return quantum_normalize(collapsed)
+
+def calculate_density_matrix(state: np.ndarray) -> np.ndarray:
+    """Calculate density matrix from quantum state."""
+    return np.outer(state, np.conj(state))
+
+def calculate_coherence(state: np.ndarray) -> float:
+    """Calculate quantum coherence using relative phase coherence and amplitude distribution."""
+    # Phase coherence
+    phases = np.angle(state)
+    phase_diffs = phases.reshape(-1, 1) - phases.reshape(1, -1)
+    phase_coherence = float(np.mean(np.cos(phase_diffs)))
+    
+    # Amplitude distribution (penalize uniform distributions)
+    amplitudes = np.abs(state)
+    amplitude_var = np.var(amplitudes)
+    amplitude_score = 1.0 - np.exp(-5 * amplitude_var)  # Exponential scaling
+    
+    # Combine scores with emphasis on phase coherence
+    return float(0.7 * (phase_coherence + 1) / 2 + 0.3 * amplitude_score)
+
+def calculate_cohesion(states: List[np.ndarray]) -> float:
+    """Calculate quantum cohesion using phase alignment and state distinctness."""
+    if not states or len(states) == 1:
+        return 0.0
+
+    cohesion = 0.0
+    n_pairs = 0
+    distinctness = 0.0
+    
+    for i in range(len(states)):
+        for j in range(i + 1, len(states)):
+            # Calculate quantum overlap
+            overlap = np.abs(np.sum(np.conj(states[i]) * states[j]))
+            overlap /= np.sqrt(np.sum(np.abs(states[i]) ** 2) * np.sum(np.abs(states[j]) ** 2))
+            
+            # Calculate state distinctness
+            diff_state = states[i] - states[j]
+            distinctness += np.sqrt(np.sum(np.abs(diff_state) ** 2))
+            
+            cohesion += overlap
+            n_pairs += 1
+
+    if n_pairs == 0:
+        return 0.0
+        
+    # Normalize distinctness
+    distinctness = distinctness / (n_pairs * np.sqrt(2))  # √2 is max difference for normalized states
+    
+    # Combine overlap cohesion with distinctness
+    avg_cohesion = cohesion / n_pairs
+    distinctness_factor = 1.0 - np.exp(-2 * distinctness)  # Exponential scaling
+    
+    return float(0.6 * avg_cohesion + 0.4 * distinctness_factor)
+
+def text_to_quantum_pattern(text: str, dims: tuple) -> np.ndarray:
+    """Convert text to quantum pattern using RCT encoding principles."""
+    # Convert text to complex amplitudes
+    chars = np.array([ord(c) for c in text], dtype=np.complex128)
+    
+    # Apply RCT phase encoding
+    positions = np.arange(len(chars))
+    phases = 2j * np.pi * positions / len(chars)
+    chars *= np.exp(phases)
+    
+    # Create quantum state representation
+    size = dims[0] * dims[1]
+    if len(chars) < size:
+        chars = np.pad(chars, (0, size - len(chars)))
+    else:
+        chars = chars[:size]
+    
+    # Reshape and apply FFT for phase relationships
+    pattern = np.fft.fft2(chars.reshape(dims))
+    
+    return quantum_normalize(pattern) 

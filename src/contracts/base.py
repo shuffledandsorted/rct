@@ -8,70 +8,97 @@ from ..quantum import WaveFunction
 class QuantumContract:
     """Base class for quantum contracts with non-zero state initialization"""
     
-    def __init__(self, 
-                 agent1,
-                 agent2,
-                 initial_state: Optional[np.ndarray] = None,
-                 dims: tuple = (32, 32)):
+    def __init__(self, agent1, agent2, wave_fn, energy_fn=None, transforms=None):
         self.agent1 = agent1
         self.agent2 = agent2
-        self.dims = dims
+        self.psi = wave_fn
+        self.energy = energy_fn or self._default_energy
+        self.transforms = transforms or set()
+        self._fixed_point = None
         
-        # Initialize with non-zero quantum state
-        if initial_state is None:
-            # Create superposition of basis states
-            n = np.prod(dims)
-            amplitude = np.ones(dims) / np.sqrt(n)
-            
-            # Add phase variation for richer state
-            y, x = np.mgrid[0:dims[0], 0:dims[1]]
-            phase = np.exp(1j * (x + y) * np.pi / max(dims))
-            
-            self.state = amplitude * phase
-        else:
-            self.state = initial_state
-            
-        # Verify non-zero state
-        if np.all(np.abs(self.state) < 1e-10):
-            raise ValueError("Contract must have non-zero initial state")
-            
-        # Initialize contract energy
-        self.energy = np.sum(np.abs(self.state) ** 2)
+    def negotiate(self, max_iterations=100, tolerance=1e-6):
+        """Implement recursive contract negotiation to find fixed point."""
+        state = self.agent1.state
+        prev_state = None
+        iteration = 0
         
-    def evolve(self, steps: int = 1) -> np.ndarray:
-        """Evolve contract state while preserving energy"""
-        current_state = self.state
-        
-        for _ in range(steps):
-            # Create energy-preserving transformation
-            phase_shift = np.exp(2j * np.pi * np.random.random(self.dims))
-            next_state = current_state * phase_shift
-            
-            # Verify energy conservation
-            next_energy = np.sum(np.abs(next_state) ** 2)
-            if abs(next_energy - self.energy) < 1e-10:
-                current_state = next_state
+        while iteration < max_iterations:
+            # Apply contract transformations
+            new_state = self.psi(state)
+            for transform in self.transforms:
+                new_state = transform(new_state)
                 
-        return current_state
-    
-    def measure_stability(self) -> float:
-        """Measure contract stability through state evolution"""
-        evolved = self.evolve(steps=5)
-        stability = 1.0 - np.mean(np.abs(evolved - self.state))
-        return float(stability)
-    
-    def interact(self, other: 'QuantumContract') -> 'QuantumContract':
-        """Create interaction between contracts"""
-        # Combine states through quantum interference
-        combined_state = (self.state + other.state) / np.sqrt(2)
-        
-        # Ensure non-zero state is maintained
-        if np.all(np.abs(combined_state) < 1e-10):
-            raise ValueError("Interaction resulted in zero state")
+            # Check for fixed point convergence
+            if prev_state is not None:
+                diff = np.linalg.norm(new_state - prev_state)
+                if diff < tolerance:
+                    self._fixed_point = new_state
+                    return True
+                    
+            prev_state = new_state
+            state = new_state
+            iteration += 1
             
+        return False
+        
+    def compose(self, other):
+        """Implement proper contract composition C₁ ∘ C₂."""
+        if self.agent2 != other.agent1:
+            raise ValueError("Contracts must share intermediate agent")
+            
+        def composed_wave_fn(state):
+            intermediate = self.psi(state)
+            return other.psi(intermediate)
+            
+        def composed_energy(state):
+            return self.energy(state) + other.energy(state)
+            
+        # Combine transforms preserving order
+        composed_transforms = self.transforms.union(other.transforms)
+        
         return QuantumContract(
             self.agent1,
             other.agent2,
-            initial_state=combined_state,
-            dims=self.dims
-        ) 
+            composed_wave_fn,
+            composed_energy,
+            composed_transforms
+        )
+        
+    def intersect(self, other):
+        """Find intersection of contracts through fixed point."""
+        if not (self.agent1 == other.agent1 and self.agent2 == other.agent2):
+            raise ValueError("Can only intersect contracts between same agents")
+            
+        def intersection_wave_fn(state):
+            # Implement Y combinator for fixed point
+            state1 = self.psi(state)
+            state2 = other.psi(state)
+            return (state1 + state2) / 2  # Initial approximation
+            
+        def intersection_energy(state):
+            return max(self.energy(state), other.energy(state))
+            
+        contract = QuantumContract(
+            self.agent1,
+            self.agent2,
+            intersection_wave_fn,
+            intersection_energy,
+            self.transforms.union(other.transforms)
+        )
+        
+        # Find fixed point
+        if not contract.negotiate():
+            raise ValueError("No stable intersection found")
+            
+        return contract
+        
+    def is_valid(self):
+        """Check if contract has reached valid fixed point."""
+        if self._fixed_point is None:
+            return self.negotiate()
+        return True
+        
+    def _default_energy(self, state):
+        """Default energy measure based on wave function."""
+        psi = self.psi(state)
+        return np.sum(np.abs(psi) ** 2) 
