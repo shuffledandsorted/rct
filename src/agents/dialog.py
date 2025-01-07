@@ -143,6 +143,14 @@ class SelfDiscoveringDialog:
         return self
 
 
+async def async_dialog(
+    dialog: SelfDiscoveringDialog, prompt: str = "You: "
+) -> SelfDiscoveringDialog | None:
+    print(prompt, end="", flush=True)
+    line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+    return dialog.process_command(line.rstrip("\n"))
+
+
 async def run_async_dialog(
     dialog: SelfDiscoveringDialog, prompt: str = "You: "
 ) -> None:
@@ -151,11 +159,7 @@ async def run_async_dialog(
     try:
         while current is not None:
             try:
-                print(prompt, end="", flush=True)
-                line = await asyncio.get_event_loop().run_in_executor(
-                    None, sys.stdin.readline
-                )
-                current = current.process_command(line.rstrip("\n"))
+                await async_dialog(current, prompt)
             except Exception as e:
                 print(f"Error: {e}")
     finally:

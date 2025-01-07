@@ -11,10 +11,16 @@ import os
 import time
 import asyncio
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Dict
 from watchdog.observers import Observer
 
-from src.agents.dialog import command, default, SelfDiscoveringDialog, run_async_dialog
+from src.agents.dialog import (
+    command,
+    default,
+    SelfDiscoveringDialog,
+    run_async_dialog,
+    async_dialog,
+)
 from ..quantum.utils import (
     calculate_coherence,
     text_to_quantum_pattern,
@@ -22,6 +28,7 @@ from ..quantum.utils import (
 )
 from ..quantum.game_theory import cooperative_collapse
 from ..quantum.contract_crystallizer import ContractCrystallizer
+from ..quantum.word_learner import QuantumWordLearner
 from ..contracts.temporal import TemporalContract
 from .self_aware import SelfAwareAgent
 from .screen_capture import ScreenCaptureAgent
@@ -60,11 +67,11 @@ class CodeDialog(SelfDiscoveringDialog):
             print(f"Error processing file change {file_path}: {e}")
 
     @property
-    def temporal_contracts(self):
+    def temporal_contracts(self) -> Dict[str, TemporalContract]:
         return self.learner.temporal_contracts
 
     @property
-    def function_contracts(self):
+    def function_contracts(self) -> Dict[str, np.ndarray]:
         return self.learner.function_contracts
 
     def start_file_watching(self, repository_path: str) -> None:
@@ -95,24 +102,11 @@ class CodeDialog(SelfDiscoveringDialog):
             print("\nInitializing repository in background...")
             print("You can start interacting while I learn about your code.\n")
 
-            # Start dialog and initialization status updates
-            dialog_task = asyncio.create_task(run_async_dialog(self, "You: "))
-
-            # Show subtle loading indicator while initializing
-            while not init_task.done():
-                print(
-                    "\r[Loading" + "." * (int(time.time() * 2) % 4) + "   ]",
-                    end="",
-                    flush=True,
-                )
-                await asyncio.sleep(0.5)
-
-            # Wait for initialization
-            await init_task
-            print("\r[Initialized]      ")
-
-            # Wait for dialog to complete
-            await dialog_task
+            dialog_task = self
+            while dialog_task:
+                prompt = "(loading) " if not init_task.done else ""
+                prompt += "You: "
+                dialog_task = await async_dialog(self, prompt)
 
         finally:
             # Clean up watchers
@@ -251,104 +245,19 @@ class CodeDialog(SelfDiscoveringDialog):
 
     @default
     def say(self, user_input: str) -> "CodeDialog":
-        """Process natural language input."""
-
-        # Create quantum pattern from input
-        input_pattern = text_to_quantum_pattern(user_input, self.dims)
-
-        # Get active contracts and their agents
-        active_contracts = [
-            contract
-            for name, contract in self.temporal_contracts.items()
-            if hasattr(contract, "creation_time")
-            and time.time() - contract.creation_time < contract.lifetime
-        ]
-
-        if not active_contracts:
-            print("No active agents available. Refreshing context...")
-            # Refresh context by re-initializing from repository files
-            self.temporal_contracts.clear()  # Clear old contracts
-            for name, pattern in self.function_contracts.items():
-                contract = TemporalContract(
-                    agent1=SelfAwareAgent(dims=self.dims),
-                    agent2=SelfAwareAgent(dims=self.dims),
-                    lifetime=self.agent_lifetime,
-                )
-                contract.creation_time = time.time()
-                contract.psi = lambda x: quantum_normalize(x + 0.1 * pattern)
-                contract.agent1.wave_fn.amplitude = pattern
-                contract.agent2.wave_fn.amplitude = quantum_normalize(np.conj(pattern))
-                self.temporal_contracts[name] = contract
-            print(f"Refreshed {len(self.temporal_contracts)} contracts")
-            return self
-
-        # Update agent states based on input and screen state if available
-        for contract in active_contracts:
-            if (
-                contract.psi is not None
-                and contract.agent1.wave_fn is not None
-                and contract.agent2.wave_fn is not None
-            ):
-                # Combine input with screen state if capturing
-                if self.is_capturing and self.screen_agent.wave_fn is not None:
-                    combined_input = quantum_normalize(
-                        0.7 * input_pattern + 0.3 * self.screen_agent.wave_fn.amplitude
-                    )
-                else:
-                    combined_input = input_pattern
-
-                # Update first agent through contract
-                state1 = contract.agent1.wave_fn.amplitude
-                state1 = quantum_normalize(state1 + 0.1 * combined_input)
-                contract.agent1.wave_fn.amplitude = state1
-
-                # Ensure states are complex numpy arrays
-                state1_complex = np.asarray(state1, dtype=np.complex128)
-                state2_complex = np.asarray(
-                    contract.agent2.wave_fn.amplitude, dtype=np.complex128
-                )
-
-                # Update second agent through entanglement
-                if state1_complex.size > 0 and state2_complex.size > 0:
-                    state2 = cooperative_collapse(
-                        states=[state1_complex, state2_complex],
-                        weights=[0.3, 0.7],
-                    )
-                    contract.agent2.wave_fn.amplitude = quantum_normalize(state2)
-
-        # Generate response using valid agent states
+        """Process user input and generate a response."""
         valid_states = []
-        for contract in active_contracts:
-            if contract.agent1.wave_fn is not None:
-                state = np.asarray(
-                    contract.agent1.wave_fn.amplitude, dtype=np.complex128
-                )
-                if state.size > 0:
-                    valid_states.append(state)
+
+        # Include screen state in response generation if capturing
+        if self.is_capturing and self.screen_agent.wave_fn is not None:
+            screen_state = np.asarray(
+                self.screen_agent.wave_fn.amplitude, dtype=np.complex128
+            )
+            valid_states.append(screen_state)
 
         if valid_states:
-            # Include screen state in response generation if capturing
-            if self.is_capturing and self.screen_agent.wave_fn is not None:
-                screen_state = np.asarray(
-                    self.screen_agent.wave_fn.amplitude, dtype=np.complex128
-                )
-                valid_states.append(screen_state)
-
-            weights = [1.0 / len(valid_states)] * len(valid_states)
-            response_state = cooperative_collapse(states=valid_states, weights=weights)
-
-            # Sample words based on evolved state
-            response_words = self.word_learner.sample_words(
-                n_samples=5, temperature=1.2
-            )
-
-            # Get relevant functions based on quantum similarity
-            relevant_funcs = []
-            for name, state in self.function_contracts.items():
-                if isinstance(state, np.ndarray):
-                    similarity = np.abs(np.vdot(response_state, state)) ** 2
-                    if similarity > 0.3:  # Threshold for relevance
-                        relevant_funcs.append(name)
+            # Process response using learner
+            response_words, relevant_funcs = self.learner.process_response(valid_states)
 
             # Format response
             print("Response:", " ".join(response_words))
@@ -403,14 +312,15 @@ class CodeDialog(SelfDiscoveringDialog):
                     most_active = name
 
         # Print status including screen capture state
-        status = f"\rStatus: {len(active_contracts)} contracts | {len(active_contracts) * 2} agents"
+        status = f"Status: {len(active_contracts)} contracts | {len(active_contracts) * 2} agents"
         status += f" | {avg_coherence:.3f} coherence | Most active: {most_active}"
         if self.is_capturing:
             status += " | Screen capture: Active"
         else:
             status += " | Screen capture: Inactive"
 
-        print(status, end="", flush=True)
+        # Move up a line, print status, restore cursor
+        print(f"\033[F\r{status}\033[E", end="", flush=True)
         return self
 
     @command
@@ -507,15 +417,15 @@ class CodeDialog(SelfDiscoveringDialog):
         return self
 
     @property
-    def word_learner(self):
+    def word_learner(self) -> QuantumWordLearner:
         return self.learner.word_learner
 
     @property
-    def embeddings(self):
+    def embeddings(self) -> Dict[str, np.ndarray]:
         return self.learner.embeddings
 
     @property
-    def agent_lifetime(self):
+    def agent_lifetime(self) -> float:
         return self.learner.agent_lifetime
 
 

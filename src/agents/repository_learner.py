@@ -10,7 +10,7 @@ This module handles learning from code files in a repository, including:
 import os
 import time
 import numpy as np
-from typing import Dict, Optional, Tuple, Set
+from typing import Dict, Optional, Tuple, Set, List
 from multiprocessing import Pool, cpu_count
 
 from ..quantum.word_learner import QuantumWordLearner
@@ -165,3 +165,47 @@ class RepositoryLearner:
             state2 = quantum_normalize(state2)
 
         return state1, state2
+
+    def _reached_stability(self, state1: np.ndarray, state2: np.ndarray) -> bool:
+        """Check if agents have reached a stable agreement (fixed point)"""
+        # Y(C₁(C₂)) = Y(C₂(C₁)) from the paper
+        similarity = np.abs(np.vdot(state1, state2)) ** 2
+        return similarity > 0.9  # High agreement threshold
+
+    def _energy_conserved(
+        self,
+        state1_old: np.ndarray,
+        state2_old: np.ndarray,
+        state1_new: np.ndarray,
+        state2_new: np.ndarray,
+    ) -> bool:
+        """Check if energy is conserved in the negotiation"""
+        energy_old = np.sum(np.abs(state1_old) ** 2) + np.sum(np.abs(state2_old) ** 2)
+        energy_new = np.sum(np.abs(state1_new) ** 2) + np.sum(np.abs(state2_new) ** 2)
+        return np.abs(energy_new - energy_old) < 0.1  # Small energy change threshold
+
+    def process_response(
+        self, valid_states: List[np.ndarray], temperature: float = 1.2
+    ) -> Tuple[List[str], List[str]]:
+        """Process quantum states to generate a response.
+
+        Returns:
+            Tuple of (response words, relevant function names)
+        """
+        weights = [1.0 / len(valid_states)] * len(valid_states)
+        response_state = cooperative_collapse(states=valid_states, weights=weights)
+
+        # Sample words based on evolved state
+        response_words = self.word_learner.sample_words(
+            n_samples=5, temperature=temperature
+        )
+
+        # Get relevant functions based on quantum similarity
+        relevant_funcs = []
+        for name, state in self.function_contracts.items():
+            if isinstance(state, np.ndarray):
+                similarity = np.abs(np.vdot(response_state, state)) ** 2
+                if similarity > 0.3:  # Threshold for relevance
+                    relevant_funcs.append(name)
+
+        return response_words, relevant_funcs

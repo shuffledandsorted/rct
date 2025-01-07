@@ -105,8 +105,9 @@ class ScreenCaptureAgent(FlowAgent):
                         )
                         new_status = f"[SCREEN] {activity_indicator} i={avg_intensity:.2f} a={activity:.2f} {agent_info}"
                         if new_status != last_status:
-                            print(f"\n{new_status}")
-                            print("You: ", end="", flush=True)
+                            # TODO:incorporate status into dialog prompt
+                            # print(f"\n{new_status}")
+                            # print("You: ", end="", flush=True)
                             last_status = new_status
 
                     self.last_status_time = current_time
