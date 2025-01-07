@@ -3,6 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 import random
 import os
+from ..quantum.utils import text_to_quantum_pattern
 
 
 @dataclass
@@ -25,91 +26,49 @@ class QuantumFile:
     word_states: Dict[str, np.ndarray]  # States of words in this file
 
 
+@dataclass
+class CodePattern:
+    """Represents a hierarchical code pattern"""
+
+    pattern_type: str  # 'function', 'class', 'block', etc.
+    content: str
+    children: List["CodePattern"]
+    parent: Optional["CodePattern"] = None
+    quantum_state: Optional[np.ndarray] = None
+
+
 class QuantumWordLearner:
-    def __init__(self, embedding_dim: int = 300, n_eigenstates: int = 50):
+
+    def __init__(self, dims: Tuple[int, int], embedding_dim: int = 50):
+        """Initialize the quantum word learner
+
+        Args:
+            dims: Tuple of dimensions for quantum patterns (required)
+            embedding_dim: Dimension of word embeddings
+        """
+        self.dims = dims
         self.embedding_dim = embedding_dim
-        self.n_eigenstates = n_eigenstates
-        self.vocabulary: Dict[str, QuantumWord] = {}
-        self.patterns: Dict[str, np.ndarray] = {}  # Quantum patterns for each word
-        self.file_states: Dict[str, QuantumFile] = {}  # Quantum states for files
+        self.vocabulary: Dict[str, np.ndarray] = {}  # Word embeddings
+        self.patterns: Dict[str, np.ndarray] = {}  # Quantum patterns
+        self.code_patterns: Dict[str, CodePattern] = {}  # Hierarchical code patterns
         self.hamiltonian: Optional[np.ndarray] = None
         self.eigenvalues: Optional[np.ndarray] = None
         self.eigenstates: Optional[np.ndarray] = None
-        self.recent_words: List[str] = []  # Track recent words for context
-        self.context_window = 50  # How many recent words to remember
-
-    def update_quantum_state(self, word: str, new_state: np.ndarray) -> None:
-        """Update the quantum state of a word based on new context"""
-        if word in self.vocabulary:
-            # Extract amplitude and phase from new state
-            amplitude = np.linalg.norm(new_state)
-            phase = np.angle(new_state.mean())
-
-            # Keep existing semantic vector
-            old_word = self.vocabulary[word]
-
-            # Blend old and new quantum properties for smooth evolution
-            old_amplitude = np.abs(old_word.amplitude)
-            old_phase = old_word.phase
-
-            # Exponential moving average for smooth updates
-            alpha = 0.3  # Learning rate
-            new_amplitude = (1 - alpha) * old_amplitude + alpha * amplitude
-            new_phase = (1 - alpha) * old_phase + alpha * phase
-
-            # Update the word's quantum properties
-            self.vocabulary[word] = QuantumWord(
-                word=word,
-                amplitude=complex(new_amplitude),
-                phase=new_phase,
-                semantic_vector=old_word.semantic_vector,
-            )
-
-            # Add to recent words for context
-            self.recent_words.append(word)
-            if len(self.recent_words) > self.context_window:
-                self.recent_words = self.recent_words[-self.context_window :]
-
-            # Mark Hamiltonian as needing rebuild
-            self.hamiltonian = None
-            self.eigenvalues = None
-            self.eigenstates = None
+        self.recent_words: List[str] = []
+        self.context_window = 5
+        self.file_states: Dict[str, QuantumFile] = {}  # Quantum states of files
 
     def add_word(self, word: str, embedding: np.ndarray) -> None:
         """Add a word to the quantum system with its embedding"""
-        # Generate random phase for quantum interference
-        phase = random.uniform(0, 2 * np.pi)
+        # Normalize embedding
+        normalized_embedding = embedding / (np.linalg.norm(embedding) + 1e-10)
+        self.vocabulary[word] = normalized_embedding
 
-        # Create amplitude based on embedding norm and recent context
-        base_amplitude = np.linalg.norm(embedding)
-
-        # Adjust amplitude based on recent word context if available
-        if self.recent_words:
-            context_boost = 0.0
-            for recent in self.recent_words[-5:]:  # Look at last 5 words
-                if recent in self.vocabulary:
-                    context_sim = np.dot(
-                        embedding / base_amplitude,
-                        self.vocabulary[recent].semantic_vector,
-                    )
-                    context_boost += max(
-                        0, context_sim
-                    )  # Only boost for positive similarity
-            base_amplitude *= 1.0 + 0.2 * context_boost  # Up to 20% boost from context
-
-        # Create amplitude with context influence
-        amplitude = complex(base_amplitude)
-
-        # Normalize embedding to unit vector
-        normalized_embedding = embedding / np.linalg.norm(embedding)
-
-        # Create quantum word
-        self.vocabulary[word] = QuantumWord(
-            word=word,
-            amplitude=amplitude,
-            phase=phase,
-            semantic_vector=normalized_embedding,
-        )
+        # Create quantum pattern if not exists
+        if word not in self.patterns:
+            pattern = np.random.randn(*self.dims) + 1j * np.random.randn(*self.dims)
+            pattern = pattern / np.linalg.norm(pattern)
+            self.patterns[word] = pattern
 
         # Add to recent words
         self.recent_words.append(word)
@@ -126,17 +85,19 @@ class QuantumWordLearner:
 
         words = list(self.vocabulary.keys())
         for i, word1 in enumerate(words):
-            qword1 = self.vocabulary[word1]
             for j, word2 in enumerate(words):
-                qword2 = self.vocabulary[word2]
                 if i == j:
-                    # Diagonal elements represent word "energy"
-                    H[i, i] = np.abs(qword1.amplitude)
+                    # Diagonal elements from pattern energy
+                    H[i, i] = np.abs(self.patterns[word1].mean())
                 else:
-                    # Off-diagonal elements represent word interactions
-                    similarity = np.dot(qword1.semantic_vector, qword2.semantic_vector)
-                    phase_diff = qword1.phase - qword2.phase
-                    H[i, j] = similarity * np.exp(1j * phase_diff)
+                    # Off-diagonal elements from word similarity and pattern interaction
+                    embedding_sim = np.dot(
+                        self.vocabulary[word1], self.vocabulary[word2]
+                    )
+                    pattern_interaction = np.vdot(
+                        self.patterns[word1], self.patterns[word2]
+                    )
+                    H[i, j] = embedding_sim * pattern_interaction
 
         self.hamiltonian = H
         # Calculate eigenvalues and eigenstates
@@ -212,10 +173,12 @@ class QuantumWordLearner:
 
         state = np.zeros(len(self.vocabulary), dtype=complex)
         for word, weight in zip(concept_words, weights_array):
-            if word in self.vocabulary:
+            if word in self.vocabulary and word in self.patterns:
                 idx = list(self.vocabulary.keys()).index(word)
-                qword = self.vocabulary[word]
-                state[idx] = weight * qword.amplitude * np.exp(1j * qword.phase)
+                # Combine embedding and pattern influence
+                embedding_norm = np.linalg.norm(self.vocabulary[word])
+                pattern_phase = np.angle(self.patterns[word].mean())
+                state[idx] = weight * embedding_norm * np.exp(1j * pattern_phase)
 
         norm = np.linalg.norm(state)
         if norm > 0:
@@ -230,50 +193,135 @@ class QuantumWordLearner:
         selected_indices = np.random.choice(len(words), size=5, p=probabilities)
         return [words[i] for i in selected_indices]
 
+    def extract_code_patterns(self, content: str) -> CodePattern:
+        """Extract hierarchical patterns from code"""
+        lines = content.split("\n")
+        root = CodePattern(pattern_type="root", content="", children=[])
+        current_pattern = root
+        indent_stack = [(0, root)]
+
+        for line in lines:
+            if not line.strip():
+                continue
+
+            # Calculate indentation level
+            indent = len(line) - len(line.lstrip())
+
+            # Handle indentation changes
+            while indent_stack and indent < indent_stack[-1][0]:
+                indent_stack.pop()
+
+            if not indent_stack:
+                indent_stack = [(0, root)]
+
+            current_pattern = indent_stack[-1][1]
+
+            # Detect pattern type
+            stripped = line.strip()
+            if stripped.startswith("def "):
+                pattern_type = "function"
+            elif stripped.startswith("class "):
+                pattern_type = "class"
+            elif stripped.endswith(":"):
+                pattern_type = "block"
+            else:
+                pattern_type = "statement"
+
+            # Create new pattern
+            new_pattern = CodePattern(
+                pattern_type=pattern_type,
+                content=stripped,
+                children=[],
+                parent=current_pattern,
+            )
+
+            # Add to hierarchy
+            current_pattern.children.append(new_pattern)
+
+            # Update stack for blocks
+            if pattern_type in ("function", "class", "block"):
+                indent_stack.append((indent, new_pattern))
+
+        return root
+
     def update_file_state(self, file_path: str, content: str) -> None:
         """Update quantum state of a file based on its content"""
-        # Get file modification time
+        print(f"\nProcessing file: {os.path.basename(file_path)}")
+
+        # Extract hierarchical patterns
+        code_pattern = self.extract_code_patterns(content)
+        self.code_patterns[file_path] = code_pattern
+        print("  - Extracted hierarchical code patterns")
+
+        # Process patterns recursively
+        def process_pattern(pattern: CodePattern) -> np.ndarray:
+            # Create quantum state for this pattern
+            if pattern.pattern_type == "root":
+                state = np.zeros(self.dims, dtype=complex)
+            else:
+                # Create pattern-specific state
+                state = text_to_quantum_pattern(pattern.content, self.dims)
+
+            # Combine with children states
+            if pattern.children:
+                child_states = [process_pattern(child) for child in pattern.children]
+                if child_states:
+                    # Quantum interference between parent and children
+                    combined = np.mean([state] + child_states, axis=0)
+                    state = combined / np.linalg.norm(combined)
+
+            pattern.quantum_state = state
+            return state
+
+        # Process entire hierarchy
+        process_pattern(code_pattern)
+        print("  - Created quantum states for code patterns")
+
+        # Continue with normal file processing
         mod_time = os.path.getmtime(file_path)
 
-        # Check if file has actually changed
         if file_path in self.file_states:
             if mod_time <= self.file_states[file_path].last_modified:
-                return  # File hasn't changed
+                print(f"  - No changes detected (last modified: {mod_time})")
+                return
+            print(
+                f"  - Changes detected (last: {self.file_states[file_path].last_modified}, new: {mod_time})"
+            )
 
-        # Extract words and create word states
+        # Extract words
         words = content.split()
+        print(f"  - Found {len(words)} words")
         word_states = {}
 
-        # Create quantum states for each word in context
+        # Process words in context
+        n_processed = 0
         for i, word in enumerate(words):
-            # Get context window around word
+            if word not in self.vocabulary:
+                # Create random embedding for new word
+                embedding = np.random.randn(self.embedding_dim)
+                self.add_word(word, embedding)
+                n_processed += 1
+
+            # Get context window
             start = max(0, i - 5)
             end = min(len(words), i + 6)
             context = words[start:i] + words[i + 1 : end]
 
-            # Create quantum state from context
-            state = np.zeros(self.embedding_dim, dtype=complex)
-            if word in self.vocabulary:
-                qword = self.vocabulary[word]
-                # Base state from word's quantum properties
-                state = (
-                    qword.amplitude * np.exp(1j * qword.phase) * qword.semantic_vector
-                )
+            # Create quantum state for word in context
+            if word in self.patterns:
+                # Base state from word's pattern
+                state = self.patterns[word].copy()
 
                 # Influence from context words
+                n_context = 0
                 for ctx_word in context:
-                    if ctx_word in self.vocabulary:
-                        ctx_qword = self.vocabulary[ctx_word]
-                        interaction = np.dot(
-                            qword.semantic_vector, ctx_qword.semantic_vector
+                    if ctx_word in self.patterns:
+                        n_context += 1
+                        # Quantum interference between patterns
+                        interaction = np.vdot(
+                            self.patterns[word], self.patterns[ctx_word]
                         )
-                        state += (
-                            0.1
-                            * interaction
-                            * ctx_qword.amplitude
-                            * np.exp(1j * ctx_qword.phase)
-                            * ctx_qword.semantic_vector
-                        )
+                        state += 0.1 * interaction * self.patterns[ctx_word]
 
                 # Normalize
                 norm = np.linalg.norm(state)
@@ -281,12 +329,22 @@ class QuantumWordLearner:
                     state = state / norm
                 word_states[word] = state
 
+            if i % 100 == 0:  # Progress for large files
+                print(
+                    f"  - Processed {i}/{len(words)} words ({n_context} context words)"
+                )
+
+        print(f"  - Added {n_processed} new words to vocabulary")
+        print(f"  - Created quantum states for {len(word_states)} words")
+
         # Create overall file state from word states
         if word_states:
             file_state = np.mean([state for state in word_states.values()], axis=0)
             file_state = file_state / np.linalg.norm(file_state)
+            print(f"  - Created file quantum state from {len(word_states)} word states")
         else:
-            file_state = np.zeros(self.embedding_dim, dtype=complex)
+            file_state = np.zeros(self.dims, dtype=complex)
+            print("  - Created empty file quantum state (no known words)")
 
         # Update file quantum state
         self.file_states[file_path] = QuantumFile(
@@ -296,17 +354,46 @@ class QuantumWordLearner:
             word_states=word_states,
         )
 
-        # Update word states based on file context
+        # Update patterns based on file context
         for word, state in word_states.items():
-            self.update_quantum_state(word, state)
+            self.patterns[word] = 0.9 * self.patterns[word] + 0.1 * state
+            self.patterns[word] = self.patterns[word] / np.linalg.norm(
+                self.patterns[word]
+            )
+
+        print(f"  - Updated quantum patterns for {len(word_states)} words")
+
+        # Mark Hamiltonian as needing rebuild
+        self.hamiltonian = None
 
     def get_file_similarity(self, file1: str, file2: str) -> float:
         """Calculate quantum similarity between two files"""
         if file1 in self.file_states and file2 in self.file_states:
-            # Use quantum fidelity as similarity measure
+            # Get quantum states
             state1 = self.file_states[file1].state
             state2 = self.file_states[file2].state
-            return float(np.abs(np.vdot(state1, state2)) ** 2)
+
+            # Calculate quantum fidelity
+            fidelity = np.abs(np.vdot(state1, state2)) ** 2
+
+            # Get common words
+            words1 = set(self.file_states[file1].word_states.keys())
+            words2 = set(self.file_states[file2].word_states.keys())
+            common_words = words1.intersection(words2)
+
+            # Add contribution from word-level similarity
+            word_sim = 0.0
+            if common_words:
+                for word in common_words:
+                    state1 = self.file_states[file1].word_states[word]
+                    state2 = self.file_states[file2].word_states[word]
+                    word_sim += np.abs(np.vdot(state1, state2)) ** 2
+                word_sim /= len(common_words)
+
+                # Combine file and word similarities
+                return float(0.6 * fidelity + 0.4 * word_sim)
+
+            return float(fidelity)
         return 0.0
 
     def suggest_related_files(self, file_path: str, n_samples: int = 3) -> List[str]:
@@ -316,7 +403,7 @@ class QuantumWordLearner:
 
         # Calculate similarities with all other files
         similarities = []
-        for other_path, other_file in self.file_states.items():
+        for other_path in self.file_states:
             if other_path != file_path:
                 similarity = self.get_file_similarity(file_path, other_path)
                 similarities.append((other_path, similarity))
@@ -324,3 +411,41 @@ class QuantumWordLearner:
         # Sort by similarity and return top matches
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [path for path, _ in similarities[:n_samples]]
+
+    def inspect_function_patterns(self, function_name: Optional[str] = None) -> None:
+        """Print insights about learned function patterns"""
+        if function_name:
+            if function_name not in self.code_patterns:
+                print(f"No pattern found for function: {function_name}")
+                return
+
+            pattern = self.code_patterns[function_name]
+            print(f"\nFunction: {function_name}")
+            print(f"Type: {pattern.pattern_type}")
+            print(f"Children: {len(pattern.children)}")
+
+            # Show quantum properties
+            if pattern.quantum_state is not None:
+                energy = np.abs(pattern.quantum_state.mean())
+                phase = np.angle(pattern.quantum_state.mean())
+                print(f"Quantum Energy: {energy:.3f}")
+                print(f"Quantum Phase: {phase:.3f}")
+
+            # Show related functions
+            related = self.suggest_related_files(function_name)
+            if related:
+                print("\nRelated functions:")
+                for rel in related:
+                    print(f"- {os.path.basename(rel)}")
+        else:
+            # Show summary of all functions
+            print("\nLearned Function Patterns:")
+            for path, pattern in self.code_patterns.items():
+                name = os.path.basename(path)
+                n_children = len(pattern.children)
+                energy = (
+                    np.abs(pattern.quantum_state.mean())
+                    if pattern.quantum_state is not None
+                    else 0
+                )
+                print(f"- {name}: {n_children} blocks, energy={energy:.3f}")

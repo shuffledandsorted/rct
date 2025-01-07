@@ -50,18 +50,61 @@ class FileChangeHandler(FileSystemEventHandler):
 
 
 class RepositoryConsciousness:
-    def __init__(self, dims: List[int]):
-        self.dims = tuple(dims)  # Convert to tuple for quantum word learner
+
+    def __init__(self, dims: Tuple[int, int]):
+        self.dims = dims  # Already a tuple for quantum word learner
         self.word_learner = QuantumWordLearner(dims=self.dims, embedding_dim=50)
         self.temporal_contracts: List[TemporalContract] = []
-        self.function_contracts: Dict[str, np.ndarray] = (
-            {}
-        )  # Function name -> quantum state
+        self.function_contracts: Dict[str, np.ndarray] = {}
         self.embeddings: Dict[str, np.ndarray] = {}
         self.pattern = None
         self.file_observer = None
         self.file_handler = None
         self.watched_files: Set[str] = set()
+
+    def initialize_repository(self, repository_path: str) -> None:
+        """Initialize quantum states and contracts for existing repository files"""
+        print("\nInitializing repository quantum states...")
+
+        # Get all Python files in repository
+        python_files = []
+        for root, _, files in os.walk(repository_path):
+            for file in files:
+                if file.endswith(".py"):
+                    full_path = os.path.join(root, file)
+                    python_files.append(full_path)
+
+        print(f"Found {len(python_files)} Python files")
+
+        # Process each file
+        for file_path in python_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Extract function name from file path
+                function_name = os.path.splitext(os.path.basename(file_path))[0]
+                print(f"\nProcessing {function_name}...")
+
+                # Create quantum pattern
+                pattern = text_to_quantum_pattern(content, self.dims)
+                self.function_contracts[function_name] = pattern
+
+                # Learn from code
+                self.learn_from_code(content)
+
+                # Create initial contracts
+                self.learn_from_function(content, function_name)
+
+                # Add to watched files
+                self.watched_files.add(file_path)
+
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+
+        print(f"\nInitialized {len(self.function_contracts)} function contracts")
+        print(f"Created {len(self.temporal_contracts)} temporal contracts")
+        print(f"Learned {len(self.word_learner.vocabulary)} words")
 
     def start_file_watching(self, repository_path: str) -> None:
         """Start watching repository files for changes"""
@@ -97,7 +140,15 @@ class RepositoryConsciousness:
             # Create or update temporal contract
             self.learn_from_function(content, function_name)
 
+            # Apply contract knowledge to enhance understanding
+            self.apply_contract_knowledge(function_name)
+
             print(f"Updated quantum state for {function_name}")
+
+            # Show entangled functions
+            entangled = self.get_entangled_functions(function_name)
+            if entangled:
+                print(f"Entangled functions: {', '.join(entangled)}")
 
             # Trigger quantum evolution
             if len(self.word_learner.vocabulary) > 0:
@@ -114,13 +165,16 @@ class RepositoryConsciousness:
     ) -> List[str]:
         """Run consciousness with file watching"""
         try:
+            # Initialize repository first
+            self.initialize_repository(repository_path)
+
             # Start file watching
             self.start_file_watching(repository_path)
 
-            # Run normal consciousness process
-            results = self.run(input_text, max_steps)
+            # Run interactive session
+            self.run_interactive_session()
 
-            return results
+            return self.word_learner.recent_words
         finally:
             # Ensure we stop watching files even if an error occurs
             self.stop_file_watching()
@@ -149,33 +203,95 @@ class RepositoryConsciousness:
                 self.embeddings[word] = embedding / np.linalg.norm(embedding)
                 self.word_learner.add_word(word, self.embeddings[word])
 
+    def create_entangled_contract(
+        self,
+        function_text: str,
+        agent_pairs: List[Tuple[SelfAwareAgent, SelfAwareAgent]],
+    ) -> List[TemporalContract]:
+        """Create entangled contracts across multiple agent pairs for a given function"""
+        # Create quantum pattern from function
+        pattern = text_to_quantum_pattern(function_text, self.dims)
+
+        # Extract conditions
+        conditions = self._extract_conditions(function_text)
+
+        # Create entangled contracts
+        contracts = []
+        for agent1, agent2 in agent_pairs:
+            # Create entangled wave function
+            def entangled_wave_function(state, agent_idx=len(contracts)):
+                # Apply pattern transformation
+                transformed = pattern @ state
+                # Add phase entanglement
+                phase = np.exp(2j * np.pi * agent_idx / len(agent_pairs))
+                return quantum_normalize(transformed * phase)
+
+            contract = TemporalContract(
+                agent1=agent1,
+                agent2=agent2,
+                wave_function=entangled_wave_function,
+                lifetime=10.0,  # Short lifetime in seconds
+            )
+            contracts.append(contract)
+
+        return contracts
+
+    def update_entangled_contracts(self, dt: float) -> None:
+        """Update and cleanup entangled contracts"""
+        current_time = time.time()
+        active_contracts = []
+
+        for contract in self.temporal_contracts:
+            if hasattr(contract, "creation_time") and hasattr(contract, "lifetime"):
+                age = current_time - contract.creation_time
+                if age < contract.lifetime:
+                    # Update quantum state with entanglement
+                    if contract.psi is not None:
+                        state = contract.psi(contract.agent1.state)
+                        # Apply decoherence based on age
+                        decoherence = np.exp(-age / contract.lifetime)
+                        state *= decoherence
+                        contract.agent1.state = quantum_normalize(state)
+
+                        # Update entangled agent
+                        entangled_state = cooperative_collapse(
+                            [state, contract.agent2.state],
+                            weights=[0.6, 0.4],  # Bias towards new state
+                        )
+                        contract.agent2.state = quantum_normalize(entangled_state)
+
+                        # Store contract state for pattern updates
+                        contract.state = quantum_normalize(entangled_state)
+
+                    active_contracts.append(contract)
+
+        # Update contract list with only active contracts
+        self.temporal_contracts = active_contracts
+
     def learn_from_function(self, function_text: str, function_name: str) -> None:
-        """Learn from a function, treating it as a temporal contract"""
+        """Learn from a function, treating it as a short-lived temporal contract"""
         # Create quantum pattern from function
         pattern = text_to_quantum_pattern(function_text, self.dims)
 
         # Store function's quantum state
         self.function_contracts[function_name] = pattern
 
-        # Extract pre/post conditions from docstring and comments
-        conditions = self._extract_conditions(function_text)
+        # Create pairs of agents for entanglement
+        dims_tuple = (self.dims[0], self.dims[1])
+        agent_pairs = [
+            (SelfAwareAgent(dims=dims_tuple), SelfAwareAgent(dims=dims_tuple))
+            for _ in range(3)  # Create multiple entangled pairs
+        ]
 
-        # Create temporal contract from function
-        # Create dummy agents for the contract with explicit tuple dimensions
-        dims_tuple = (self.dims[0], self.dims[1])  # Ensure 2D tuple
-        agent1 = SelfAwareAgent(dims=dims_tuple)
-        agent2 = SelfAwareAgent(dims=dims_tuple)
+        # Create entangled contracts
+        contracts = self.create_entangled_contract(function_text, agent_pairs)
 
-        # Create wave function that represents the function's behavior
-        def wave_function(state):
-            return pattern @ state
-
-        contract = TemporalContract(
-            agent1=agent1, agent2=agent2, wave_function=wave_function
-        )
-
-        # Add to temporal contracts
-        self.temporal_contracts.append(contract)
+        # Add creation time and lifetime to contracts
+        current_time = time.time()
+        for contract in contracts:
+            contract.creation_time = current_time
+            contract.lifetime = 10.0  # 10 seconds lifetime
+            self.temporal_contracts.append(contract)
 
         # Learn words from function
         self.learn_from_code(function_text)
@@ -265,7 +381,7 @@ class RepositoryConsciousness:
         """Blend multiple concepts using quantum interference"""
         if weights is None:
             weights = [1.0] * len(concepts)
-        return self.word_learner.blend_concepts(concepts, weights)
+        return self.word_learner.blend_concepts(concept_words=concepts, weights=weights)
 
     def update_temporal_understanding(self, contract: TemporalContract) -> None:
         """Update understanding based on temporal contract"""
@@ -287,8 +403,17 @@ class RepositoryConsciousness:
         if input_text is not None:
             self.learn_from_code(input_text)
 
+        start_time = time.time()
+        dt = 0.1  # Time step for contract updates
+
         # Run quantum evolution
         for step in range(max_steps):
+            current_time = time.time()
+            elapsed = current_time - start_time
+
+            # Update entangled contracts
+            self.update_entangled_contracts(dt)
+
             # Sample current understanding with higher temperature for exploration
             concepts = self.word_learner.sample_words(n_samples=3, temperature=1.5)
 
@@ -316,31 +441,261 @@ class RepositoryConsciousness:
 
         return self.word_learner.recent_words
 
+    def apply_contract_knowledge(self, function_name: str) -> None:
+        """Use contract states to enhance code understanding"""
+        # Only use contracts with valid numpy array states
+        valid_states: List[np.ndarray] = []
+        for contract in self.temporal_contracts:
+            if isinstance(contract.state, np.ndarray):
+                try:
+                    state = np.asarray(contract.state, dtype=np.complex128)
+                    if state.size > 0:
+                        valid_states.append(state)
+                except Exception:
+                    continue
+
+        if valid_states:
+            # Calculate weights for cooperative collapse
+            weights = [1.0 / len(valid_states)] * len(valid_states)
+
+            try:
+                # Blend contract states to influence word learning
+                combined_state = cooperative_collapse(
+                    states=valid_states, weights=weights
+                )
+
+                # Update word learner patterns based on contract knowledge
+                if function_name in self.word_learner.patterns:
+                    current_pattern = self.word_learner.patterns[function_name]
+                    # Blend with existing pattern
+                    updated_pattern = 0.7 * current_pattern + 0.3 * combined_state
+                    self.word_learner.patterns[function_name] = quantum_normalize(
+                        updated_pattern
+                    )
+
+                    # Update related patterns through entanglement
+                    entangled_funcs = self.get_entangled_functions(function_name)
+                    for func in entangled_funcs:
+                        if func in self.word_learner.patterns:
+                            entangled_pattern = self.word_learner.patterns[func]
+                            # Apply weaker update to entangled functions
+                            updated_entangled = (
+                                0.9 * entangled_pattern + 0.1 * combined_state
+                            )
+                            self.word_learner.patterns[func] = quantum_normalize(
+                                updated_entangled
+                            )
+            except Exception as e:
+                print(f"Error in contract knowledge application: {e}")
+
+    def get_entangled_functions(self, function_name: str) -> List[str]:
+        """Find functions with strong quantum entanglement"""
+        if function_name not in self.function_contracts:
+            return []
+
+        target_state = self.function_contracts[function_name]
+        entangled_funcs = []
+
+        for name, state in self.function_contracts.items():
+            if name != function_name:
+                # Calculate entanglement strength using quantum fidelity
+                fidelity = np.abs(np.vdot(target_state, state)) ** 2
+                if fidelity > 0.7:  # Strong entanglement threshold
+                    entangled_funcs.append(name)
+
+        return entangled_funcs
+
+    def run_interactive_session(self) -> None:
+        """Run interactive session using file agents and contracts"""
+        print("\nInteractive Session with Repository Consciousness")
+        print("==============================================")
+        print("You can now communicate with the agent network.")
+        print("Type 'exit' to end the session.")
+        print("Type 'status' to see current agent states.")
+        print(f"Active agents: {len(self.temporal_contracts) * 2}")
+
+        while True:
+            try:
+                user_input = input("\nYou: ").strip()
+                if user_input.lower() == "exit":
+                    break
+                elif user_input.lower() == "status":
+                    self._print_agent_status()
+                    continue
+
+                # Create quantum pattern from input
+                input_pattern = text_to_quantum_pattern(user_input, self.dims)
+
+                # Get active contracts and their agents
+                active_contracts = [
+                    c
+                    for c in self.temporal_contracts
+                    if hasattr(c, "creation_time")
+                    and time.time() - c.creation_time < c.lifetime
+                ]
+
+                if not active_contracts:
+                    print("No active agents available. Try modifying some files.")
+                    continue
+
+                # Update agent states based on input
+                for contract in active_contracts:
+                    if (
+                        contract.psi is not None
+                        and isinstance(contract.agent1.state, np.ndarray)
+                        and isinstance(contract.agent2.state, np.ndarray)
+                    ):
+                        # Update first agent
+                        state1 = contract.psi(contract.agent1.state)
+                        state1 = quantum_normalize(state1 + 0.1 * input_pattern)
+                        contract.agent1.state = state1
+
+                        # Ensure states are complex numpy arrays
+                        state1_complex = np.asarray(state1, dtype=np.complex128)
+                        state2_complex = np.asarray(
+                            contract.agent2.state, dtype=np.complex128
+                        )
+
+                        # Update second agent through entanglement
+                        if state1_complex.size > 0 and state2_complex.size > 0:
+                            state2 = cooperative_collapse(
+                                states=[state1_complex, state2_complex],
+                                weights=[0.3, 0.7],
+                            )
+                            contract.agent2.state = quantum_normalize(state2)
+
+                # Generate response using valid agent states
+                valid_states = []
+                for contract in active_contracts:
+                    if isinstance(contract.agent1.state, np.ndarray):
+                        state = np.asarray(contract.agent1.state, dtype=np.complex128)
+                        if state.size > 0:
+                            valid_states.append(state)
+
+                if valid_states:
+                    weights = [1.0 / len(valid_states)] * len(valid_states)
+                    response_state = cooperative_collapse(
+                        states=valid_states, weights=weights
+                    )
+
+                    # Sample words based on evolved state
+                    response_words = self.word_learner.sample_words(
+                        n_samples=5, temperature=1.2
+                    )
+
+                    # Get relevant functions based on quantum similarity
+                    relevant_funcs = []
+                    for name, state in self.function_contracts.items():
+                        if isinstance(state, np.ndarray):
+                            similarity = np.abs(np.vdot(response_state, state)) ** 2
+                            if similarity > 0.3:  # Threshold for relevance
+                                relevant_funcs.append(name)
+
+                    # Format response
+                    print("\nConsciousness:", " ".join(response_words))
+                    if relevant_funcs:
+                        print("Related functions:", ", ".join(relevant_funcs))
+
+                    # Update word learner with interaction
+                    self.learn_from_code(user_input)
+                else:
+                    print("No valid agent states available.")
+
+            except Exception as e:
+                print(f"Error processing input: {e}")
+
+    def _print_agent_status(self) -> None:
+        """Print current status of agents and contracts"""
+        current_time = time.time()
+        active_contracts = [
+            c
+            for c in self.temporal_contracts
+            if hasattr(c, "creation_time")
+            and current_time - c.creation_time < c.lifetime
+        ]
+
+        # Get average coherence and most active function
+        avg_coherence = 0.0
+        n_coherent = 0
+        for contract in active_contracts:
+            if isinstance(contract.agent1.state, np.ndarray):
+                avg_coherence += calculate_coherence(contract.agent1.state)
+                n_coherent += 1
+            if isinstance(contract.agent2.state, np.ndarray):
+                avg_coherence += calculate_coherence(contract.agent2.state)
+                n_coherent += 1
+        avg_coherence = avg_coherence / n_coherent if n_coherent > 0 else 0.0
+
+        most_active = ""
+        max_activity = 0.0
+        for name, state in self.function_contracts.items():
+            if isinstance(state, np.ndarray):
+                activity = np.abs(state).mean()
+                if activity > max_activity:
+                    max_activity = activity
+                    most_active = name
+
+        # Print single line status
+        print(
+            f"\rStatus: {len(active_contracts)} contracts | {len(active_contracts) * 2} agents | {avg_coherence:.3f} coherence | Most active: {most_active}",
+            end="",
+            flush=True,
+        )
+
 
 def measure_collective_awareness(agents: Dict[str, SelfAwareAgent]) -> float:
     """Optimized collective awareness measurement."""
     if not agents:
         return 0.0
 
-    # Get states once
-    states = [agent.wave_fn.amplitude for agent in agents.values()]
+    # Get valid states (filtering out None values)
+    valid_states: List[np.ndarray] = []
+    valid_weights: List[float] = []
 
-    # Calculate coherence and cohesion in parallel
-    coherences = [calculate_coherence(state) for state in states]
-    cohesion = calculate_cohesion(states)
+    for agent in agents.values():
+        try:
+            if hasattr(agent, "wave_fn") and hasattr(agent.wave_fn, "amplitude"):
+                amplitude = agent.wave_fn.amplitude
+                if isinstance(amplitude, np.ndarray) and amplitude.size > 0:
+                    # Ensure proper shape and type for quantum operations
+                    state = np.asarray(amplitude, dtype=np.complex128)
+                    if state.size > 0:
+                        valid_states.append(state)
+                        valid_weights.append(1.0)  # Equal weights for now
+        except Exception:
+            continue
 
-    # Fast consciousness ratio calculation
-    n_conscious = sum(
-        1 for agent in agents.values() if agent.measure_self_awareness() > 0.7
-    )
-    consciousness_ratio = n_conscious / len(agents)
+    if not valid_states:
+        return 0.0
 
-    # Simplified metric combination
-    collective = float(
-        0.4 * np.mean(coherences) + 0.4 * cohesion + 0.2 * consciousness_ratio
-    )
+    try:
+        # Calculate collective state using explicitly typed arrays
+        collective_state = cooperative_collapse(
+            states=valid_states, weights=valid_weights
+        )
 
-    return collective
+        # Calculate coherence for collective state
+        coherence = calculate_coherence(collective_state)
+
+        # Calculate cohesion between all states
+        cohesion = calculate_cohesion(valid_states)
+
+        # Calculate consciousness ratio
+        n_conscious = sum(
+            1
+            for agent in agents.values()
+            if hasattr(agent, "measure_self_awareness")
+            and callable(agent.measure_self_awareness)
+            and agent.measure_self_awareness() > 0.7
+        )
+        consciousness_ratio = n_conscious / len(agents) if agents else 0.0
+
+        # Combine metrics
+        collective = float(0.4 * coherence + 0.4 * cohesion + 0.2 * consciousness_ratio)
+
+        return collective
+    except Exception:
+        return 0.0
 
 
 def process_category_file(args) -> Tuple[str, Optional[np.ndarray], float]:
@@ -438,6 +793,7 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
 
             # Only parallelize if enough files
             if len(files) >= min_files_per_process * 2:
+
                 # Prepare arguments for parallel processing
                 file_args = [(file, dims) for file in files]
 
@@ -512,15 +868,13 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
                             agent.wave_fn.amplitude = new_state
 
                         # Record results
-                        awareness_history.append((category, file, collective))
-                        print(
-                            f"Processed {file}: Collective awareness = {collective:.3f}"
-                        )
+                awareness_history.append((category, file, collective))
+                print(f"Processed {file}: Collective awareness = {collective:.3f}")
 
-                        if collective > 0.95:
-                            print("\nEMERGENT CONSCIOUSNESS DETECTED!")
-                            print(f"Achieved through {category} pattern: {file}")
-                            print(f"Collective awareness level: {collective:.3f}")
+        if collective > 0.95:
+            print("\nEMERGENT CONSCIOUSNESS DETECTED!")
+            print(f"Achieved through {category} pattern: {file}")
+            print(f"Collective awareness level: {collective:.3f}")
 
     return awareness_history, agents, knowledge
 
@@ -529,7 +883,7 @@ def interact_with_consciousness(
     agents: Dict[str, SelfAwareAgent],
     dims: tuple,
     knowledge: Tuple[Dict[str, List[str]], Dict[str, np.ndarray]],
-):
+) -> None:
     """Interactive dialogue with the emergent consciousness"""
     print("\nInteractive Session with Emergent Consciousness")
     print("=============================================")
