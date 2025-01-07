@@ -7,104 +7,65 @@ This module provides a dialog system that:
 4. Uses quantum-inspired algorithms for code understanding
 """
 
-from typing import List, Dict, Optional, Union, Tuple, Set, Callable, Any
-import numpy as np
-from multiprocessing import Pool, cpu_count
 import os
 import time
-from watchdog.observers import Observer
 import asyncio
+import numpy as np
+from typing import Tuple
+from watchdog.observers import Observer
 
 from src.agents.dialog import command, default, SelfDiscoveringDialog, run_async_dialog
-from ..quantum.word_learner import QuantumWordLearner
-from ..contracts.temporal import TemporalContract
 from ..quantum.utils import (
-    quantum_normalize,
     calculate_coherence,
-    calculate_cohesion,
     text_to_quantum_pattern,
+    quantum_normalize,
 )
 from ..quantum.game_theory import cooperative_collapse
+from ..quantum.contract_crystallizer import ContractCrystallizer
+from ..contracts.temporal import TemporalContract
 from .self_aware import SelfAwareAgent
 from .screen_capture import ScreenCaptureAgent
-from .file_watcher import FileChangeHandler, _process_file
+from .file_watcher import FileChangeHandler
+from .repository_learner import RepositoryLearner
 
 
 class CodeDialog(SelfDiscoveringDialog):
 
     def __init__(self, dims: Tuple[int, int]):
         super().__init__()
-        self.dims = dims  # Already a tuple for quantum word learner
-        self.word_learner = QuantumWordLearner(dims=self.dims, embedding_dim=50)
-        self.temporal_contracts: Dict[str, TemporalContract] = (
-            {}
-        )  # Keyed by function name
-        self.function_contracts: Dict[str, np.ndarray] = {}
-        self.embeddings: Dict[str, np.ndarray] = {}
-        self.pattern = None
-        self.file_observer = None
-        self.file_handler = None
-        self.watched_files: Set[str] = set()
-        self.agent_lifetime = 3600  # Extend agent lifetime to 1 hour
-
-        # Initialize screen capture agent
+        self.dims = dims
+        self.learner = RepositoryLearner(dims=dims)
         self.screen_agent = ScreenCaptureAgent(dims=dims)
         self.is_capturing = False
+        self.file_observer = None
+        self.file_handler = None
 
     def initialize_repository(self, repository_path: str) -> None:
         """Initialize quantum states and contracts for existing repository files"""
-        print("\nInitializing repository quantum states...")
+        self.learner.initialize_repository(repository_path)
 
-        # Get all Python files in repository
-        python_files = []
-        for root, _, files in os.walk(repository_path):
-            for file in files:
-                if file.endswith(".py"):
-                    full_path = os.path.join(root, file)
-                    python_files.append(full_path)
+    def process_file_change(self, file_path: str) -> None:
+        """Process changes in a file"""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
 
-        print(f"Found {len(python_files)} Python files")
+            function_name = os.path.splitext(os.path.basename(file_path))[0]
+            pattern = text_to_quantum_pattern(content, self.dims)
+            self.learner.function_contracts[function_name] = pattern
+            self.learner.learn_from_code(content)
+            self.learner.learn_from_function(content, function_name)
 
-        # Set up parallel processing
-        n_cores = max(1, cpu_count() - 1)  # Leave one core free
-        min_files_per_process = 5  # Minimum files to justify spawning a process
-        max_processes = min(n_cores, len(python_files) // min_files_per_process)
+        except Exception as e:
+            print(f"Error processing file change {file_path}: {e}")
 
-        if max_processes > 1:
-            print(f"Processing files using {max_processes} cores...")
-            with Pool(max_processes) as pool:
-                # Process in batches to avoid memory issues
-                batch_size = max(
-                    min_files_per_process, len(python_files) // max_processes
-                )
-                for i in range(0, len(python_files), batch_size):
-                    batch = python_files[i : i + batch_size]
-                    # Pass dims along with file path
-                    args = [(file_path, self.dims) for file_path in batch]
-                    results = pool.map(_process_file, args)
+    @property
+    def temporal_contracts(self):
+        return self.learner.temporal_contracts
 
-                    # Process results
-                    for result in results:
-                        if result is not None:
-                            function_name, content, pattern = result
-                            self.function_contracts[function_name] = pattern
-                            self.learn_from_code(content)
-                            self.learn_from_function(content, function_name)
-                            self.watched_files.add(function_name)
-        else:
-            # Process sequentially for small number of files
-            for file_path in python_files:
-                result = _process_file((file_path, self.dims))
-                if result is not None:
-                    function_name, content, pattern = result
-                    self.function_contracts[function_name] = pattern
-                    self.learn_from_code(content)
-                    self.learn_from_function(content, function_name)
-                    self.watched_files.add(file_path)
-
-        print(f"\nInitialized {len(self.function_contracts)} function contracts")
-        print(f"Created {len(self.temporal_contracts)} temporal contracts")
-        print(f"Learned {len(self.word_learner.vocabulary)} words")
+    @property
+    def function_contracts(self):
+        return self.learner.function_contracts
 
     def start_file_watching(self, repository_path: str) -> None:
         """Start watching repository files for changes"""
@@ -123,63 +84,41 @@ class CodeDialog(SelfDiscoveringDialog):
             self.file_observer.join()
             print("[WATCHER] File watcher stopped")
 
-    def process_file_change(self, file_path: str) -> None:
-        """Process changes in a file"""
+    async def run(self, repository_path: str) -> None:
+        """Run the dialog system with background initialization."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # Start initialization in background
+            init_task = asyncio.create_task(
+                asyncio.to_thread(self.initialize_repository, repository_path)
+            )
 
-            function_name = os.path.splitext(os.path.basename(file_path))[0]
-            pattern = text_to_quantum_pattern(content, self.dims)
-            self.function_contracts[function_name] = pattern
-            self.learn_from_code(content)
-            self.learn_from_function(content, function_name)
+            print("\nInitializing repository in background...")
+            print("You can start interacting while I learn about your code.\n")
 
-        except Exception as e:
-            print(f"Error processing file change {file_path}: {e}")
+            # Start dialog and initialization status updates
+            dialog_task = asyncio.create_task(run_async_dialog(self, "You: "))
 
-    def run_with_file_watching(self, repository_path: str) -> None:
-        """Run dialog with file watching"""
-        try:
-            # Initialize repository first
-            self.initialize_repository(repository_path)
+            # Show subtle loading indicator while initializing
+            while not init_task.done():
+                print(
+                    "\r[Loading" + "." * (int(time.time() * 2) % 4) + "   ]",
+                    end="",
+                    flush=True,
+                )
+                await asyncio.sleep(0.5)
 
-            # Start file watching
-            self.start_file_watching(repository_path)
+            # Wait for initialization
+            await init_task
+            print("\r[Initialized]      ")
 
-            # Run interactive session
-            async def main():
-                await run_async_dialog(self, "You: ")
-
-            asyncio.run(main())
+            # Wait for dialog to complete
+            await dialog_task
 
         finally:
-            # Ensure we stop watching files even if an error occurs
+            # Clean up watchers
             self.stop_file_watching()
-
-    def learn_from_code(self, code_text: str) -> None:
-        """Learn from code text using quantum word learning"""
-        # Extract words and create simple embeddings
-        words = code_text.split()
-        for i, word in enumerate(words):
-            if word not in self.embeddings:
-                # Create embedding based on word's context
-                context_size = 5
-                start = max(0, i - context_size)
-                end = min(len(words), i + context_size + 1)
-                context = words[start:i] + words[i + 1 : end]
-
-                # Simple embedding: average of random vectors for context words
-                if context:
-                    embedding = np.mean(
-                        [self.embeddings.get(w, np.random.randn(50)) for w in context],
-                        axis=0,
-                    )
-                else:
-                    embedding = np.random.randn(50)
-
-                self.embeddings[word] = embedding / np.linalg.norm(embedding)
-                self.word_learner.add_word(word, self.embeddings[word])
+            if self.is_capturing:
+                self.stop_screen_capture()
 
     def _reached_stability(self, state1: np.ndarray, state2: np.ndarray) -> bool:
         """Check if agents have reached a stable agreement (fixed point)"""
@@ -417,7 +356,7 @@ class CodeDialog(SelfDiscoveringDialog):
                 print("Related functions:", ", ".join(relevant_funcs))
 
             # Update word learner with interaction
-            self.learn_from_code(user_input)
+            self.learner.learn_from_code(user_input)
         else:
             print("No valid agent states available.")
 
@@ -474,13 +413,122 @@ class CodeDialog(SelfDiscoveringDialog):
         print(status, end="", flush=True)
         return self
 
+    @command
+    def crystallize(self, contract_name: str, temperature: float = 1.0) -> "CodeDialog":
+        """Grow a computational crystal from a contract's patterns."""
+        if contract_name not in self.temporal_contracts:
+            print(f"Contract {contract_name} not found")
+            return self
+
+        contract = self.temporal_contracts[contract_name]
+        if not contract.is_valid():
+            print("Contract must be valid to crystallize")
+            return self
+
+        print(f"\nGrowing crystal from {contract_name}...")
+        print(f"Temperature: {temperature:.1f}")
+
+        # Create crystallizer and observe the contract
+        crystallizer = ContractCrystallizer()
+        crystallizer.observe_contract(contract)
+
+        # Check initial state
+        coherence = crystallizer.wave_fn.measure_coherence()
+        print(f"Initial coherence: {coherence:.3f}")
+
+        # Try to crystallize the pattern
+        if coherence > 0.3:  # Has some structure worth growing
+            # Generate a new function name
+            func_name = f"crystal_{contract_name}"
+
+            # Save the crystallized pattern
+            filename = f"src/crystals/{func_name}.py"
+            os.makedirs("src/crystals", exist_ok=True)
+
+            if crystallizer.save_to_file(filename, func_name):
+                print(f"\nSuccessfully crystallized pattern to {filename}")
+                print("You can now import and use this function!")
+            else:
+                print("\nFailed to save crystallized pattern")
+        else:
+            print("\nPattern too chaotic to crystallize")
+
+        return self
+
+    @command
+    def inspect_crystal(self, contract_name: str) -> "CodeDialog":
+        """Analyze the quantum properties of a contract's patterns."""
+        if contract_name not in self.temporal_contracts:
+            print(f"Contract {contract_name} not found")
+            return self
+
+        contract = self.temporal_contracts[contract_name]
+        crystallizer = ContractCrystallizer()
+        crystallizer.observe_contract(contract)
+
+        print(f"\nQuantum Analysis of {contract_name}")
+        print("================================")
+        coherence = crystallizer.wave_fn.measure_coherence()
+        print(f"Coherence:   {coherence:.3f}")
+
+        # Get pattern frequencies
+        amplitude = np.abs(crystallizer.wave_fn.amplitude)
+        freqs = np.fft.fft2(amplitude)
+        main_freqs = np.argsort(np.abs(freqs).flatten())[-3:]  # Top 3 frequencies
+
+        # Analyze the patterns
+        print("\nDominant Patterns:")
+        max_strength = 0.0
+        max_period = 0.0
+
+        for i, freq_idx in enumerate(main_freqs, 1):
+            freq = np.unravel_index(freq_idx, freqs.shape)
+            strength = float(np.abs(freqs[freq]) / np.abs(freqs).max())
+            # Add 1 to avoid division by zero
+            period = float(
+                amplitude.shape[0] / (freq[0] + 1)
+            )  # Convert frequency to period
+            print(f"{i}. Period {period:.1f} steps: {strength:.2%} strength")
+
+            if strength > max_strength:
+                max_strength = strength
+                max_period = period
+
+        # Try to interpret the patterns
+        if max_strength > 0.8:
+            print("\nPattern Interpretation:")
+            if max_period > amplitude.shape[0] / 2:
+                print("- Long-term transformation (global behavior)")
+            elif max_period > 5:
+                print("- Medium-term cycle (repeated behavior)")
+            else:
+                print("- Short-term oscillation (local behavior)")
+
+        return self
+
+    @property
+    def word_learner(self):
+        return self.learner.word_learner
+
+    @property
+    def embeddings(self):
+        return self.learner.embeddings
+
+    @property
+    def agent_lifetime(self):
+        return self.learner.agent_lifetime
+
 
 if __name__ == "__main__":
-    print("Starting Code Dialog System")
-    print("==========================")
+    print("\nCode Dialog")
+    print("===========")
 
     # Create dialog instance
     dialog = CodeDialog(dims=(512, 512))
 
-    # Run with file watching
-    dialog.run_with_file_watching(".")
+    # Start watchers
+    dialog.start_file_watching(".")
+    dialog.start_screen_capture()  # Start screen watching by default
+
+    # Run the dialog
+    asyncio.run(dialog.run("."))

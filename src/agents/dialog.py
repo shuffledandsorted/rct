@@ -1,47 +1,10 @@
 """Self-discovering command-line dialog system.
 
-This module provides a framework for building interactive command-line interfaces that:
-
-1. Automatically discover commands from class methods
-2. Use docstrings for help text and documentation
-3. Handle argument parsing and command dispatch
-4. Support state transitions between different dialog modes
-
-Key components:
-
-- @command: Decorator for marking methods as commands
-- @default: Decorator for marking the default command handler
-- SelfDiscoveringDialog: Base class that provides command discovery and processing
-- run_async_dialog: Async function to run the dialog system
-
-Example:
-    ```python
-    class MyDialog(SelfDiscoveringDialog):
-        @command
-        def greet(self, name: str) -> "MyDialog":
-            '''Say hello to someone.'''
-            print(f"Hello, {name}!")
-            return self
-
-        @default
-        def echo(self, text: str) -> "MyDialog":
-            '''Echo unknown commands.'''
-            print(f"You said: {text}")
-            return self
-
-    # Run the dialog
-    dialog = MyDialog()
-    asyncio.run(run_async_dialog(dialog))
-    ```
-
-Commands are discovered by inspecting the class's methods. Each command can:
-- Have its own arguments (parsed automatically)
-- Return a new dialog state (enabling state transitions)
-- Use docstrings for help text
-- Handle unknown commands via the @default handler
+Commands marked with @command appear in the help menu.
+All commands support argument parsing and state transitions.
 """
 
-from typing import Dict, Any, Optional, Callable, TypeVar, cast, Protocol
+from typing import Dict, Any, Optional, Callable, TypeVar, cast
 import inspect
 import asyncio
 import shlex
@@ -52,93 +15,74 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def default(f: F) -> F:
-    """Decorator to mark a method as the default command handler."""
+    """Mark a method as the default command handler."""
     setattr(f, "_is_default", True)
     return f
 
 
+def exit_command(f: F) -> F:
+    """Mark a method to appear as the exit command."""
+    setattr(f, "_is_exit", True)
+    return f
+
+
 def command(f: F) -> F:
-    """Decorator that handles argument parsing for command methods."""
+    """Mark a method to appear in the help menu."""
+    setattr(f, "_is_command", True)
+    return f
+
+
+def _parse_args(f: F, raw_args: list) -> dict:
+    """Parse arguments according to function signature."""
     sig = inspect.signature(f)
     params = list(sig.parameters.values())[1:]  # Skip 'self'
+    call_args = {}
 
-    @wraps(f)
-    def wrapper(self: Any, *args: Any) -> Any:
-        call_args = {}
-        raw_args = args[0] if args else []
+    for i, param in enumerate(params):
+        if i < len(raw_args):
+            if param.kind == param.VAR_POSITIONAL:
+                call_args[param.name] = raw_args[i:]
+                break
+            call_args[param.name] = raw_args[i]
+        elif param.default != param.empty:
+            continue
+        elif param.kind == param.VAR_POSITIONAL:
+            call_args[param.name] = []
+        else:
+            raise TypeError(f"Missing required argument: {param.name}")
 
-        try:
-            # Handle different parameter patterns
-            for i, param in enumerate(params):
-                if i < len(raw_args):
-                    # We have a value for this parameter
-                    if param.kind == param.VAR_POSITIONAL:
-                        # *args parameter - collect remaining arguments
-                        call_args[param.name] = raw_args[i:]
-                        break
-                    else:
-                        call_args[param.name] = raw_args[i]
-                elif param.default != param.empty:
-                    # Parameter has a default value
-                    continue
-                elif param.kind == param.VAR_POSITIONAL:
-                    # *args parameter with no values
-                    call_args[param.name] = []
-                else:
-                    # Missing required parameter
-                    raise TypeError(f"Missing required argument: {param.name}")
-
-            return f(self, **call_args)
-        except Exception as e:
-            print(f"Error: {e}")
-            return self
-
-    setattr(wrapper, "_is_command", True)
-    setattr(wrapper, "__doc__", f.__doc__)
-    setattr(wrapper, "__signature__", sig)
-    return cast(F, wrapper)
+    return call_args
 
 
 class SelfDiscoveringDialog:
-    """Base class for self-reflective dialog systems.
-
-    This class provides a command system that discovers available commands by inspecting
-    its own methods. Commands are derived from public methods, with help text taken
-    from their docstrings.
-    """
-
     def __init__(self):
-        """Initialize the dialog system."""
         self._commands = self._discover_commands()
         self._default = self._discover_default()
         self._help_text = self._make_help_text()
 
     def _discover_commands(self) -> Dict[str, Dict[str, Any]]:
-        """Discover available commands by inspecting class methods."""
+        """Find methods marked with @command for the help menu."""
         commands = {}
         for name, method in inspect.getmembers(self.__class__, inspect.isfunction):
-            if hasattr(method, "_is_command") or (
-                not name.startswith("_") and name not in ("run", "start", "stop")
-            ):
-                doc = inspect.getdoc(method) or ""
+            if hasattr(method, "_is_command") and method.__doc__:
+                doc = method.__doc__.split("\n")[0]
                 sig = inspect.signature(method)
                 commands[name.lower()] = {
                     "method": name,
-                    "help": doc.split("\n")[0],  # First line of docstring
-                    "handler": method,
+                    "help": doc,
                     "signature": sig,
                 }
         return commands
 
     def _discover_default(self) -> Callable[[str], "SelfDiscoveringDialog"]:
-        """Find the method marked as the default command handler."""
+        """Find the @default handler or use fallback."""
         for _, method in inspect.getmembers(self.__class__, inspect.isfunction):
             if hasattr(method, "_is_default"):
                 return method
         return self._fallback_command
 
     def _make_help_text(self) -> str:
-        """Generate help text from discovered commands."""
+        """Generate help text from @command methods."""
         lines = ["Available commands:"]
         for name, info in self._commands.items():
             sig = info["signature"]
@@ -151,7 +95,7 @@ class SelfDiscoveringDialog:
 
     @command
     def help(self) -> "SelfDiscoveringDialog":
-        """Display available commands and their descriptions."""
+        """Display available commands."""
         print(self._help_text)
         return self
 
@@ -161,11 +105,6 @@ class SelfDiscoveringDialog:
         return None
 
     def process_command(self, user_input: str) -> Optional["SelfDiscoveringDialog"]:
-        """Process a user command, dispatching to the appropriate handler.
-
-        Returns:
-            The next dialog state, or None to exit
-        """
         try:
             parts = shlex.split(user_input)
         except ValueError:
@@ -177,14 +116,29 @@ class SelfDiscoveringDialog:
         cmd = parts[0].lower()
         args = parts[1:]
 
+        # Try explicit command first
         if cmd in self._commands:
             method = getattr(self, self._commands[cmd]["method"])
-            return method(args)
-        else:
-            return self._default(user_input)
+            try:
+                return method(**_parse_args(method, args))
+            except Exception as e:
+                print(f"Error: {e}")
+                return self
+
+        # Then try any public method
+        if hasattr(self, cmd) and not cmd.startswith("_"):
+            method = getattr(self, cmd)
+            if callable(method):
+                try:
+                    return method(**_parse_args(method, args))
+                except Exception as e:
+                    print(f"Error: {e}")
+                    return self
+
+        # Fall back to default handler
+        return self._default(user_input)
 
     def _fallback_command(self, user_input: str) -> "SelfDiscoveringDialog":
-        """Default fallback if no @default handler is defined."""
         print(f"Unknown command. Type 'help' for available commands.")
         return self
 
@@ -192,14 +146,7 @@ class SelfDiscoveringDialog:
 async def run_async_dialog(
     dialog: SelfDiscoveringDialog, prompt: str = "You: "
 ) -> None:
-    """Run a dialog system asynchronously.
-
-    Args:
-        dialog: The dialog system to run
-        prompt: The prompt to display
-
-    This function handles the main input/output loop for the dialog system.
-    """
+    """Run the dialog system with the given prompt."""
     current = dialog
     try:
         while current is not None:
@@ -208,8 +155,7 @@ async def run_async_dialog(
                 line = await asyncio.get_event_loop().run_in_executor(
                     None, sys.stdin.readline
                 )
-                line = line.rstrip("\n")
-                current = current.process_command(line)
+                current = current.process_command(line.rstrip("\n"))
             except Exception as e:
                 print(f"Error: {e}")
     finally:
