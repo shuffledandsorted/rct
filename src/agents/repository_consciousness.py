@@ -513,10 +513,11 @@ class RepositoryConsciousness:
         """Run interactive session using file agents and contracts"""
         print("\nInteractive Session with Repository Consciousness")
         print("==============================================")
-        
-        conversation_history = []
-        last_topic = None
-        
+        print("You can now communicate with the agent network.")
+        print("Type 'exit' to end the session.")
+        print("Type 'status' to see current agent states.")
+        print(f"Active agents: {len(self.temporal_contracts) * 2}")
+
         while True:
             try:
                 user_input = input("\nYou: ").strip()
@@ -528,11 +529,12 @@ class RepositoryConsciousness:
 
                 # Create quantum pattern from input
                 input_pattern = text_to_quantum_pattern(user_input, self.dims)
-                
+
                 # Get active contracts and their agents
                 active_contracts = [
-                    c for c in self.temporal_contracts
-                    if hasattr(c, "creation_time") 
+                    c
+                    for c in self.temporal_contracts
+                    if hasattr(c, "creation_time")
                     and time.time() - c.creation_time < c.lifetime
                 ]
 
@@ -540,67 +542,66 @@ class RepositoryConsciousness:
                     print("No active agents available. Try modifying some files.")
                     continue
 
-                # Update agent states based on input and history
-                valid_states = []
+                # Update agent states based on input
                 for contract in active_contracts:
-                    if (contract.psi is not None and 
-                        isinstance(contract.agent1.state, np.ndarray) and
-                        isinstance(contract.agent2.state, np.ndarray)):
-                        
-                        # Blend current input with conversation history
-                        history_pattern = None
-                        if conversation_history:
-                            history_patterns = [text_to_quantum_pattern(h, self.dims) 
-                                             for h in conversation_history[-3:]]
-                            history_pattern = np.mean(history_patterns, axis=0)
-                        
-                        # Update first agent with history context
+                    if (
+                        contract.psi is not None
+                        and isinstance(contract.agent1.state, np.ndarray)
+                        and isinstance(contract.agent2.state, np.ndarray)
+                    ):
+                        # Update first agent
                         state1 = contract.psi(contract.agent1.state)
-                        if history_pattern is not None:
-                            state1 = quantum_normalize(state1 + 0.2 * history_pattern)
-                        state1 = quantum_normalize(state1 + 0.3 * input_pattern)
+                        state1 = quantum_normalize(state1 + 0.1 * input_pattern)
                         contract.agent1.state = state1
 
-                        # Update second agent through entanglement
-                        state2 = cooperative_collapse(
-                            states=[state1, contract.agent2.state],
-                            weights=[0.4, 0.6]
+                        # Ensure states are complex numpy arrays
+                        state1_complex = np.asarray(state1, dtype=np.complex128)
+                        state2_complex = np.asarray(
+                            contract.agent2.state, dtype=np.complex128
                         )
-                        contract.agent2.state = quantum_normalize(state2)
-                        
-                        valid_states.extend([state1, state2])
+
+                        # Update second agent through entanglement
+                        if state1_complex.size > 0 and state2_complex.size > 0:
+                            state2 = cooperative_collapse(
+                                states=[state1_complex, state2_complex],
+                                weights=[0.3, 0.7],
+                            )
+                            contract.agent2.state = quantum_normalize(state2)
+
+                # Generate response using valid agent states
+                valid_states = []
+                for contract in active_contracts:
+                    if isinstance(contract.agent1.state, np.ndarray):
+                        state = np.asarray(contract.agent1.state, dtype=np.complex128)
+                        if state.size > 0:
+                            valid_states.append(state)
 
                 if valid_states:
-                    # Generate structured response
+                    weights = [1.0 / len(valid_states)] * len(valid_states)
                     response_state = cooperative_collapse(
-                        states=valid_states,
-                        weights=[1.0/len(valid_states)] * len(valid_states)
+                        states=valid_states, weights=weights
                     )
-                    
-                    # Sample words with context
-                    topic_words = self.word_learner.sample_words(n_samples=3, temperature=0.7)
-                    action_words = self.word_learner.sample_words(n_samples=2, temperature=1.0)
-                    
-                    # Form response using templates
-                    if "?" in user_input:  # Question template
-                        response = f"I think {topic_words[0]} relates to {topic_words[1]} through {action_words[0]}. "
-                        response += f"Should we explore how {topic_words[2]} connects?"
-                    else:  # Statement template
-                        response = f"Yes, {topic_words[0]} and {topic_words[1]} are interesting. "
-                        response += f"I see {action_words[0]} leading to {action_words[1]}."
 
-                    # Update conversation history
-                    conversation_history.append(user_input)
-                    conversation_history.append(response)
-                    if len(conversation_history) > 6:  # Keep last 3 exchanges
-                        conversation_history = conversation_history[-6:]
+                    # Sample words based on evolved state
+                    response_words = self.word_learner.sample_words(
+                        n_samples=5, temperature=1.2
+                    )
 
-                    # Calculate metrics
-                    coherence = np.mean([calculate_coherence(s) for s in valid_states])
-                    resonance = calculate_cohesion(valid_states)
-                    final_state = "✓" if coherence > 0.3 else "×"
-                    
-                    print(f"\nConsciousness: {response} |C={coherence:.2f}, R={resonance:.2f}, F={final_state}⟩")
+                    # Get relevant functions based on quantum similarity
+                    relevant_funcs = []
+                    for name, state in self.function_contracts.items():
+                        if isinstance(state, np.ndarray):
+                            similarity = np.abs(np.vdot(response_state, state)) ** 2
+                            if similarity > 0.3:  # Threshold for relevance
+                                relevant_funcs.append(name)
+
+                    # Format response
+                    print("\nConsciousness:", " ".join(response_words))
+                    if relevant_funcs:
+                        print("Related functions:", ", ".join(relevant_funcs))
+
+                    # Update word learner with interaction
+                    self.learn_from_code(user_input)
                 else:
                     print("No valid agent states available.")
 
@@ -902,8 +903,15 @@ def run_repository_consciousness(dims: tuple = (32, 32), n_agents: int = 25):
                             agent.wave_fn.amplitude = new_state
 
                         # Record results
-                awareness_history.append((category, file, collective))
-                print(f"Processed {file}: Collective awareness = {collective:.3f}")
+                        awareness_history.append((category, file, collective))
+                        print(
+                            f"Processed {file}: Collective awareness = {collective:.3f}"
+                        )
+
+                        if collective > 0.95:
+                            print("\nEMERGENT CONSCIOUSNESS DETECTED!")
+                            print(f"Achieved through {category} pattern: {file}")
+                            print(f"Collective awareness level: {collective:.3f}")
 
         if collective > 0.95:
             print("\nEMERGENT CONSCIOUSNESS DETECTED!")
@@ -1185,7 +1193,7 @@ def create_word_vector(args) -> Tuple[str, np.ndarray]:
 
 
 def process_repository_content() -> (
-    Tuple[str, Dict[str, List[str]], Dict[str, np.ndarray]
+    Tuple[str, Dict[str, List[str]], Dict[str, np.ndarray]]
 ):
     """Process repository content to extract word vectors in parallel"""
     # Get all files
