@@ -5,6 +5,7 @@ import time
 from ..agents.temporal import TemporalMixin
 from ..agents.config import AgentConfig
 from .base import QuantumContract
+from ..quantum import WaveFunction
 
 
 class TemporalContract(QuantumContract, TemporalMixin):
@@ -24,7 +25,7 @@ class TemporalContract(QuantumContract, TemporalMixin):
         TemporalMixin.__init__(self, config or AgentConfig())
         self.creation_time = time.time()
         self.lifetime = lifetime  # Lifetime in seconds
-        self.state = None
+        self.wave_fn = WaveFunction(agent1.dims)
 
     def apply(self):
         """Execute contract interaction with temporal memory."""
@@ -32,8 +33,8 @@ class TemporalContract(QuantumContract, TemporalMixin):
             raise ValueError("Cannot apply invalid contract")
 
         # Get current states
-        new_state1 = self.psi(self.agent1.state)
-        new_state2 = self.psi(self.agent2.state)
+        new_state1 = self.psi(self.agent1.wave_fn.amplitude)
+        new_state2 = self.psi(self.agent2.wave_fn.amplitude)
 
         # Update temporal memory
         self.update_memory(new_state1)
@@ -45,8 +46,8 @@ class TemporalContract(QuantumContract, TemporalMixin):
             new_state2 = self.combine_states(new_state2, past_state)
 
         # Update agents
-        self.agent1.update_state(new_state1)
-        self.agent2.update_state(new_state2)
+        self.agent1.wave_fn.amplitude = new_state1
+        self.agent2.wave_fn.amplitude = new_state2
 
         # Compress memory periodically
         if len(self.temporal_memory) >= self.config.memory_size:
@@ -60,10 +61,10 @@ class TemporalContract(QuantumContract, TemporalMixin):
         coherence = self.config.coherence_threshold
         return (1 - coherence) * current_state + coherence * past_state
 
-    def _check_stability(self):
-        """Check stability including temporal coherence."""
-        # First check basic stability
-        if not super()._check_stability():
+    def is_valid(self):
+        """Check if contract is valid including temporal coherence."""
+        # First check basic validity
+        if not super().is_valid():
             return False
 
         # Then check temporal stability if we have history
@@ -80,15 +81,15 @@ class TemporalContract(QuantumContract, TemporalMixin):
 
     def evolve(self, dt: float) -> None:
         """Evolve the contract's quantum state"""
-        if self.psi is not None and self.state is not None:
+        if self.psi is not None and self.wave_fn is not None:
             # Apply wave function evolution
-            self.state = self.psi(self.state)
+            self.wave_fn.amplitude = self.psi(self.wave_fn.amplitude)
             # Apply decoherence based on age
             age = time.time() - self.creation_time
             if age < self.lifetime:
                 decoherence = np.exp(-age / self.lifetime)
-                self.state *= decoherence
+                self.wave_fn.amplitude *= decoherence
                 # Normalize
-                norm = np.linalg.norm(self.state)
+                norm = np.linalg.norm(self.wave_fn.amplitude)
                 if norm > 0:
-                    self.state /= norm
+                    self.wave_fn.amplitude /= norm
