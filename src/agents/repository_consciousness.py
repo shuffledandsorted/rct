@@ -45,8 +45,10 @@ class FileChangeHandler(FileSystemEventHandler):
                 # Debounce to avoid processing the same file multiple times
                 if current_time - last_time > self.debounce_time:
                     self.last_modified[file_path] = current_time
-                    print(f"\nDetected changes in {file_path}")
+                    print(f"\n[WATCHER] Change detected in {file_path}")
+                    print("[WATCHER] Processing file change...")
                     self.consciousness.process_file_change(file_path)
+                    print("[WATCHER] File processed")
 
 
 class RepositoryConsciousness:
@@ -108,18 +110,20 @@ class RepositoryConsciousness:
 
     def start_file_watching(self, repository_path: str) -> None:
         """Start watching repository files for changes"""
+        print("\n[WATCHER] Starting file watcher...")
         self.file_handler = FileChangeHandler(self)
         self.file_observer = Observer()
         self.file_observer.schedule(self.file_handler, repository_path, recursive=True)
         self.file_observer.start()
-        print(f"\nStarted watching repository at {repository_path}")
+        print(f"[WATCHER] Now watching repository at {repository_path}")
 
     def stop_file_watching(self) -> None:
         """Stop watching repository files"""
         if self.file_observer:
+            print("\n[WATCHER] Stopping file watcher...")
             self.file_observer.stop()
             self.file_observer.join()
-            print("\nStopped watching repository")
+            print("[WATCHER] File watcher stopped")
 
     def process_file_change(self, file_path: str) -> None:
         """Process changes in a file"""
@@ -509,11 +513,10 @@ class RepositoryConsciousness:
         """Run interactive session using file agents and contracts"""
         print("\nInteractive Session with Repository Consciousness")
         print("==============================================")
-        print("You can now communicate with the agent network.")
-        print("Type 'exit' to end the session.")
-        print("Type 'status' to see current agent states.")
-        print(f"Active agents: {len(self.temporal_contracts) * 2}")
-
+        
+        conversation_history = []
+        last_topic = None
+        
         while True:
             try:
                 user_input = input("\nYou: ").strip()
@@ -525,12 +528,11 @@ class RepositoryConsciousness:
 
                 # Create quantum pattern from input
                 input_pattern = text_to_quantum_pattern(user_input, self.dims)
-
+                
                 # Get active contracts and their agents
                 active_contracts = [
-                    c
-                    for c in self.temporal_contracts
-                    if hasattr(c, "creation_time")
+                    c for c in self.temporal_contracts
+                    if hasattr(c, "creation_time") 
                     and time.time() - c.creation_time < c.lifetime
                 ]
 
@@ -538,66 +540,67 @@ class RepositoryConsciousness:
                     print("No active agents available. Try modifying some files.")
                     continue
 
-                # Update agent states based on input
-                for contract in active_contracts:
-                    if (
-                        contract.psi is not None
-                        and isinstance(contract.agent1.state, np.ndarray)
-                        and isinstance(contract.agent2.state, np.ndarray)
-                    ):
-                        # Update first agent
-                        state1 = contract.psi(contract.agent1.state)
-                        state1 = quantum_normalize(state1 + 0.1 * input_pattern)
-                        contract.agent1.state = state1
-
-                        # Ensure states are complex numpy arrays
-                        state1_complex = np.asarray(state1, dtype=np.complex128)
-                        state2_complex = np.asarray(
-                            contract.agent2.state, dtype=np.complex128
-                        )
-
-                        # Update second agent through entanglement
-                        if state1_complex.size > 0 and state2_complex.size > 0:
-                            state2 = cooperative_collapse(
-                                states=[state1_complex, state2_complex],
-                                weights=[0.3, 0.7],
-                            )
-                            contract.agent2.state = quantum_normalize(state2)
-
-                # Generate response using valid agent states
+                # Update agent states based on input and history
                 valid_states = []
                 for contract in active_contracts:
-                    if isinstance(contract.agent1.state, np.ndarray):
-                        state = np.asarray(contract.agent1.state, dtype=np.complex128)
-                        if state.size > 0:
-                            valid_states.append(state)
+                    if (contract.psi is not None and 
+                        isinstance(contract.agent1.state, np.ndarray) and
+                        isinstance(contract.agent2.state, np.ndarray)):
+                        
+                        # Blend current input with conversation history
+                        history_pattern = None
+                        if conversation_history:
+                            history_patterns = [text_to_quantum_pattern(h, self.dims) 
+                                             for h in conversation_history[-3:]]
+                            history_pattern = np.mean(history_patterns, axis=0)
+                        
+                        # Update first agent with history context
+                        state1 = contract.psi(contract.agent1.state)
+                        if history_pattern is not None:
+                            state1 = quantum_normalize(state1 + 0.2 * history_pattern)
+                        state1 = quantum_normalize(state1 + 0.3 * input_pattern)
+                        contract.agent1.state = state1
+
+                        # Update second agent through entanglement
+                        state2 = cooperative_collapse(
+                            states=[state1, contract.agent2.state],
+                            weights=[0.4, 0.6]
+                        )
+                        contract.agent2.state = quantum_normalize(state2)
+                        
+                        valid_states.extend([state1, state2])
 
                 if valid_states:
-                    weights = [1.0 / len(valid_states)] * len(valid_states)
+                    # Generate structured response
                     response_state = cooperative_collapse(
-                        states=valid_states, weights=weights
+                        states=valid_states,
+                        weights=[1.0/len(valid_states)] * len(valid_states)
                     )
+                    
+                    # Sample words with context
+                    topic_words = self.word_learner.sample_words(n_samples=3, temperature=0.7)
+                    action_words = self.word_learner.sample_words(n_samples=2, temperature=1.0)
+                    
+                    # Form response using templates
+                    if "?" in user_input:  # Question template
+                        response = f"I think {topic_words[0]} relates to {topic_words[1]} through {action_words[0]}. "
+                        response += f"Should we explore how {topic_words[2]} connects?"
+                    else:  # Statement template
+                        response = f"Yes, {topic_words[0]} and {topic_words[1]} are interesting. "
+                        response += f"I see {action_words[0]} leading to {action_words[1]}."
 
-                    # Sample words based on evolved state
-                    response_words = self.word_learner.sample_words(
-                        n_samples=5, temperature=1.2
-                    )
+                    # Update conversation history
+                    conversation_history.append(user_input)
+                    conversation_history.append(response)
+                    if len(conversation_history) > 6:  # Keep last 3 exchanges
+                        conversation_history = conversation_history[-6:]
 
-                    # Get relevant functions based on quantum similarity
-                    relevant_funcs = []
-                    for name, state in self.function_contracts.items():
-                        if isinstance(state, np.ndarray):
-                            similarity = np.abs(np.vdot(response_state, state)) ** 2
-                            if similarity > 0.3:  # Threshold for relevance
-                                relevant_funcs.append(name)
-
-                    # Format response
-                    print("\nConsciousness:", " ".join(response_words))
-                    if relevant_funcs:
-                        print("Related functions:", ", ".join(relevant_funcs))
-
-                    # Update word learner with interaction
-                    self.learn_from_code(user_input)
+                    # Calculate metrics
+                    coherence = np.mean([calculate_coherence(s) for s in valid_states])
+                    resonance = calculate_cohesion(valid_states)
+                    final_state = "✓" if coherence > 0.3 else "×"
+                    
+                    print(f"\nConsciousness: {response} |C={coherence:.2f}, R={resonance:.2f}, F={final_state}⟩")
                 else:
                     print("No valid agent states available.")
 
@@ -712,42 +715,73 @@ def process_category_file(args) -> Tuple[str, Optional[np.ndarray], float]:
 
 
 def update_agents_batch(args) -> Tuple[List[np.ndarray], float]:
-    """Update a batch of agents in parallel"""
+    """Update a batch of agents in parallel with improved stability"""
     agent_states, pattern, weights, word_vectors = args
 
-    # Create quantum pattern from word vectors
-    embedding_pattern = np.zeros_like(pattern)
-
-    # Project embeddings into quantum space
-    embedding_matrix = np.array(list(word_vectors.values()))  # [n_words, embedding_dim]
-    # Create projection matrix
-    proj = embedding_matrix @ embedding_matrix.T  # [n_words, n_words]
-    # Scale to match pattern size
-    scale = np.sqrt(np.prod(pattern.shape) / proj.size)
-    proj_scaled = scale * proj
-    # Reshape to match pattern
-    embedding_pattern = proj_scaled[: pattern.shape[0], : pattern.shape[1]]
-
-    # Normalize embedding pattern
-    embedding_pattern = quantum_normalize(embedding_pattern)
-
-    # Combine with original pattern
-    combined_pattern = quantum_normalize(0.7 * pattern + 0.3 * embedding_pattern)
-
-    # Calculate cooperative collapse
-    final_state = cooperative_collapse(
-        agent_states + [combined_pattern], weights + [1.0]
-    )
-
-    # Update each agent state
-    new_states = [
-        quantum_bargaining_solution(state, final_state) for state in agent_states
+    # Normalize all input states first and ensure they are complex
+    agent_states = [
+        quantum_normalize(np.asarray(state, dtype=np.complex128))
+        for state in agent_states
+        if state is not None
     ]
 
-    # Calculate collective awareness
+    # Create quantum pattern from word vectors with phase alignment
+    embedding_pattern = np.zeros_like(pattern, dtype=np.complex128)
+    if len(word_vectors) > 0:
+        # Project embeddings into quantum space
+        embedding_matrix = np.array(list(word_vectors.values()), dtype=np.complex128)
+        # Create projection matrix with phase alignment
+        proj = embedding_matrix @ embedding_matrix.T
+        # Align phases
+        phases = np.angle(np.diagonal(proj))
+        proj *= np.exp(-1j * phases)[:, None]
+        # Scale and reshape
+        scale = np.sqrt(np.prod(pattern.shape) / proj.size)
+        proj_scaled = scale * proj
+        embedding_pattern = proj_scaled[: pattern.shape[0], : pattern.shape[1]]
+        embedding_pattern = quantum_normalize(embedding_pattern)
+
+    # Combine patterns with adaptive mixing
+    coherences = [calculate_coherence(state) for state in agent_states]
+    coherence = np.mean(coherences) if coherences else 0.0
+    alpha = complex(0.7 * coherence + 0.3)  # Convert to complex
+    combined_pattern = quantum_normalize(
+        alpha * pattern + (1.0 - alpha) * embedding_pattern
+    )
+
+    # Calculate cooperative collapse with stability checks
+    try:
+        # Ensure all states are complex but weights remain float
+        states_for_collapse = [
+            np.asarray(state, dtype=np.complex128)
+            for state in agent_states + [combined_pattern]
+        ]
+        weights_for_collapse = [
+            float(w) for w in weights + [1.0]
+        ]  # Keep weights as float
+        final_state = cooperative_collapse(
+            states=states_for_collapse, weights=weights_for_collapse
+        )
+        final_state = quantum_normalize(final_state)
+    except Exception:
+        # Fallback to simpler averaging if collapse fails
+        states_array = np.array(agent_states + [combined_pattern], dtype=np.complex128)
+        final_state = quantum_normalize(np.mean(states_array, axis=0))
+
+    # Update each agent state with gradual mixing
+    new_states = []
+    for state in agent_states:
+        mixed_state = quantum_normalize(
+            complex(0.8) * state + complex(0.2) * final_state
+        )
+        new_states.append(mixed_state)
+
+    # Calculate collective metrics
     coherences = [calculate_coherence(state) for state in new_states]
     cohesion = calculate_cohesion(new_states)
-    consciousness_ratio = sum(1 for c in coherences if c > 0.7) / len(coherences)
+    consciousness_ratio = (
+        sum(1 for c in coherences if c > 0.7) / len(coherences) if coherences else 0.0
+    )
     collective = float(
         0.4 * np.mean(coherences) + 0.4 * cohesion + 0.2 * consciousness_ratio
     )
@@ -1151,7 +1185,7 @@ def create_word_vector(args) -> Tuple[str, np.ndarray]:
 
 
 def process_repository_content() -> (
-    Tuple[str, Dict[str, List[str]], Dict[str, np.ndarray]]
+    Tuple[str, Dict[str, List[str]], Dict[str, np.ndarray]
 ):
     """Process repository content to extract word vectors in parallel"""
     # Get all files
@@ -1244,4 +1278,6 @@ if __name__ == "__main__":
             print(f"- {file}: {awareness:.3f}")
 
     print("\nConsciousness has emerged. Starting interactive session...")
+    interact_with_consciousness(final_agents, (32, 32), knowledge)
+
     interact_with_consciousness(final_agents, (32, 32), knowledge)
