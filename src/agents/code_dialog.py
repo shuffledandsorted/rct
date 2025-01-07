@@ -18,7 +18,6 @@ from src.agents.dialog import (
     command,
     default,
     SelfDiscoveringDialog,
-    run_async_dialog,
     async_dialog,
 )
 from ..quantum.utils import (
@@ -34,15 +33,53 @@ from .self_aware import SelfAwareAgent
 from .screen_capture import ScreenCaptureAgent
 from .file_watcher import FileChangeHandler
 from .repository_learner import RepositoryLearner
+from ..contracts.query import QueryContract
 
 
 class CodeDialog(SelfDiscoveringDialog):
+    """Interactive dialog system for code analysis and interaction.
+
+    This module provides a dialog system that:
+    1. Watches repository files for changes
+    2. Captures and processes screen state
+    3. Maintains an interactive conversation with the user
+    4. Uses quantum-inspired algorithms for code understanding
+
+    System Architecture Flow:
+
+                   Cycle Begins
+                        ↓
+    ┌─────────────────────────────────────────────┐
+    │                                            │
+    │  ┌──────────────────┐  ┌──────────────────┐│
+    │  │   CodeDialog     │  │RepositoryLearner ││
+    │  │                  │  │                  ││
+    │  │   Environment    │◄►│    Knowledge     ││
+    │  │   Interaction    │  │     Growth       ││
+    │  └──────────────────┘  └──────────────────┘│
+    │                                            │
+    │             Negotiation                    │
+    │             of Contracts                   │
+    │                   │                        │
+    │                   ▼                        │
+    │            Crystallization                 │
+    │                                            │
+    └────────────────────┬───────────────────────┘
+                         │
+                         ▼
+                   Cycle Ends
+
+    The system operates through continuous cycles where temporal and function
+    contracts negotiate understanding. These negotiations crystallize into
+    stable patterns, which seed the next cycle of learning and growth.
+    """
 
     def __init__(self, dims: Tuple[int, int]):
         super().__init__()
         self.dims = dims
         self.learner = RepositoryLearner(dims=dims)
         self.screen_agent = ScreenCaptureAgent(dims=dims)
+        self.user_agent = SelfAwareAgent(dims=dims)  # Persistent user agent
         self.is_capturing = False
         self.file_observer = None
         self.file_handler = None
@@ -94,25 +131,60 @@ class CodeDialog(SelfDiscoveringDialog):
     async def run(self, repository_path: str) -> None:
         """Run the dialog system with background initialization."""
         try:
+            # Validate repository path
+            repository_path = os.path.abspath(repository_path)
+            if not os.path.exists(repository_path):
+                raise ValueError(f"Repository path does not exist: {repository_path}")
+
+            # Start file watching first
+            self.start_file_watching(repository_path)
+
             # Start initialization in background
             init_task = asyncio.create_task(
                 asyncio.to_thread(self.initialize_repository, repository_path)
             )
 
-            print("\nInitializing repository in background...")
+            print(f"\nInitializing repository at {repository_path}")
             print("You can start interacting while I learn about your code.\n")
 
-            dialog_task = self
-            while dialog_task:
-                prompt = "(loading) " if not init_task.done else ""
-                prompt += "You: "
-                dialog_task = await async_dialog(self, prompt)
+            # Start dialog loop
+            try:
+                while True:
+                    # Update prompt based on initialization status
+                    prompt = "(loading) " if not init_task.done() else ""
+                    prompt += "You: "
+
+                    # Get and process user input
+                    try:
+                        dialog_task = await async_dialog(self, prompt)
+                        if dialog_task is None:  # Exit condition
+                            break
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        print(f"Error in dialog: {e}")
+                        continue
+
+                    # Update agent counts if screen capture is active
+                    self._update_agent_counts()
+
+            except asyncio.CancelledError:
+                pass
+
+            # Wait for initialization to complete if still running
+            if not init_task.done():
+                try:
+                    await init_task
+                except Exception as e:
+                    print(f"Error during initialization: {e}")
 
         finally:
-            # Clean up watchers
+            # Clean up watchers and resources
             self.stop_file_watching()
             if self.is_capturing:
                 self.stop_screen_capture()
+
+            print("\nDialog session ended.")
 
     def _reached_stability(self, state1: np.ndarray, state2: np.ndarray) -> bool:
         """Check if agents have reached a stable agreement (fixed point)"""
@@ -244,9 +316,22 @@ class CodeDialog(SelfDiscoveringDialog):
             print("[SCREEN] Screen capture stopped")
 
     @default
-    def say(self, user_input: str) -> "CodeDialog":
-        """Process user input and generate a response."""
+    def say(self, user_input: str) -> None:
+        """Process user input and generate a response.
+
+        Takes user input, collects relevant quantum states from screen capture,
+        function contracts, and word learner, then uses QueryContract to
+        negotiate understanding and generate a coherent response.
+        """
         valid_states = []
+        weights = []  # Track importance of each state
+
+        # Add word learner state if available
+        if hasattr(self.word_learner, "get_state_from_words"):
+            word_state = self.word_learner.get_state_from_words(user_input.split())
+            if word_state is not None:
+                valid_states.append(word_state)
+                weights.append(0.4)  # Word state is important for understanding
 
         # Include screen state in response generation if capturing
         if self.is_capturing and self.screen_agent.wave_fn is not None:
@@ -254,25 +339,88 @@ class CodeDialog(SelfDiscoveringDialog):
                 self.screen_agent.wave_fn.amplitude, dtype=np.complex128
             )
             valid_states.append(screen_state)
+            weights.append(0.2)  # Screen state provides context
+
+        # Add relevant function states
+        user_words = set(user_input.lower().split())
+        for name, state in self.function_contracts.items():
+            if isinstance(state, np.ndarray):
+                # Check if function name or its parts are relevant to input
+                name_parts = set(name.lower().split("_"))
+                if user_words & name_parts:  # If there's any overlap
+                    valid_states.append(state)
+                    weights.append(0.2)  # Function states provide domain knowledge
 
         if valid_states:
-            # Process response using learner
-            response_words, relevant_funcs = self.learner.process_response(valid_states)
+            # Create query contract between user and knowledge base
+            query_contract = QueryContract(
+                user_agent=self.user_agent,  # Use persistent user agent
+                knowledge_agent=self.learner,
+            )
 
-            # Format response
-            print("Response:", " ".join(response_words))
-            if relevant_funcs:
-                print("Related functions:", ", ".join(relevant_funcs))
+            # Normalize weights
+            total_weight = sum(weights)
+            weights = [w / total_weight for w in weights]
 
-            # Update word learner with interaction
-            self.learner.learn_from_code(user_input)
+            # Initialize user agent with combined valid states
+            max_dim = max(state.size for state in valid_states)
+            normalized_states = []
+            for state in valid_states:
+                if state.size < max_dim:
+                    # Pad smaller states
+                    padded = np.zeros(max_dim, dtype=np.complex128)
+                    padded[: state.size] = state.flatten()
+                    normalized_states.append(quantum_normalize(padded))
+                else:
+                    normalized_states.append(
+                        quantum_normalize(state.flatten()[:max_dim])
+                    )
+
+            # Combine states with cooperative collapse and weighted importance
+            combined_state = cooperative_collapse(normalized_states, weights=weights)
+
+            # Gradually update user agent state for temporal continuity
+            if self.user_agent.wave_fn.amplitude is not None:
+                # Mix new state with existing state (70-30 split favoring new state)
+                combined_state = (
+                    0.7 * combined_state + 0.3 * self.user_agent.wave_fn.amplitude
+                )
+                combined_state = quantum_normalize(combined_state)
+
+            self.user_agent.wave_fn.amplitude = combined_state
+
+            # Process query through contract with temperature annealing
+            max_attempts = 3
+            best_result = None
+            best_coherence = 0
+
+            for attempt in range(max_attempts):
+                temperature = 1.0 - (attempt * 0.3)  # Reduce temperature each attempt
+                result = query_contract.process_query(user_input)
+
+                if result and result["coherence"] > best_coherence:
+                    best_result = result
+                    best_coherence = result["coherence"]
+
+                if best_coherence > 0.7:  # Good enough convergence
+                    break
+
+            if best_result:
+                # Format response with metadata
+                print("Response:", best_result["knowledge"])
+                if "relevant_funcs" in best_result:
+                    print(
+                        "Related functions:", ", ".join(best_result["relevant_funcs"])
+                    )
+                print(f"Coherence: {best_result['coherence']:.3f}")
+                print(f"Energy: {best_result['energy']:.3f}")
+            else:
+                print("Could not reach sufficient coherence for response.")
         else:
             print("No valid agent states available.")
 
-        return self
-
     @command
-    def details(self) -> "CodeDialog":
+    def details(self) -> None:
         """Print current status of agents and contracts"""
         current_time = time.time()
         active_contracts = [
@@ -321,19 +469,18 @@ class CodeDialog(SelfDiscoveringDialog):
 
         # Move up a line, print status, restore cursor
         print(f"\033[F\r{status}\033[E", end="", flush=True)
-        return self
 
     @command
-    def crystallize(self, contract_name: str, temperature: float = 1.0) -> "CodeDialog":
+    def crystallize(self, contract_name: str, temperature: float = 1.0) -> None:
         """Grow a computational crystal from a contract's patterns."""
         if contract_name not in self.temporal_contracts:
             print(f"Contract {contract_name} not found")
-            return self
+            return
 
         contract = self.temporal_contracts[contract_name]
         if not contract.is_valid():
             print("Contract must be valid to crystallize")
-            return self
+            return
 
         print(f"\nGrowing crystal from {contract_name}...")
         print(f"Temperature: {temperature:.1f}")
@@ -363,14 +510,12 @@ class CodeDialog(SelfDiscoveringDialog):
         else:
             print("\nPattern too chaotic to crystallize")
 
-        return self
-
     @command
-    def inspect_crystal(self, contract_name: str) -> "CodeDialog":
+    def inspect_crystal(self, contract_name: str) -> None:
         """Analyze the quantum properties of a contract's patterns."""
         if contract_name not in self.temporal_contracts:
             print(f"Contract {contract_name} not found")
-            return self
+            return
 
         contract = self.temporal_contracts[contract_name]
         crystallizer = ContractCrystallizer()
@@ -414,8 +559,6 @@ class CodeDialog(SelfDiscoveringDialog):
             else:
                 print("- Short-term oscillation (local behavior)")
 
-        return self
-
     @property
     def word_learner(self) -> QuantumWordLearner:
         return self.learner.word_learner
@@ -430,15 +573,46 @@ class CodeDialog(SelfDiscoveringDialog):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Code Dialog - Interactive code analysis system"
+    )
+    parser.add_argument(
+        "repository_path",
+        nargs="?",
+        default=".",
+        help="Path to the repository to analyze (default: current directory)",
+    )
+    parser.add_argument(
+        "--dims",
+        type=int,
+        nargs=2,
+        default=[512, 512],
+        help="Dimensions for quantum state space (default: 512 512)",
+    )
+    parser.add_argument(
+        "--no-screen", action="store_true", help="Disable screen capture"
+    )
+
+    args = parser.parse_args()
+
     print("\nCode Dialog")
     print("===========")
 
-    # Create dialog instance
-    dialog = CodeDialog(dims=(512, 512))
+    # Create dialog instance with specified dimensions
+    dialog = CodeDialog(dims=(args.dims[0], args.dims[1]))
 
-    # Start watchers
-    dialog.start_file_watching(".")
-    dialog.start_screen_capture()  # Start screen watching by default
+    # Start screen capture unless disabled
+    if not args.no_screen:
+        dialog.start_screen_capture()
 
-    # Run the dialog
-    asyncio.run(dialog.run("."))
+    # Run the dialog with specified repository path
+    try:
+        asyncio.run(dialog.run(args.repository_path))
+    except KeyboardInterrupt:
+        print("\nShutting down gracefully...")
+    except Exception as e:
+        print(f"\nError: {e}")
+        raise

@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 import random
 import os
-from ..quantum.utils import text_to_quantum_pattern
+from ..quantum.utils import text_to_quantum_pattern, quantum_normalize
 
 
 @dataclass
@@ -449,3 +449,35 @@ class QuantumWordLearner:
                     else 0
                 )
                 print(f"- {name}: {n_children} blocks, energy={energy:.3f}")
+
+    def get_state_from_words(self, words: List[str]) -> Optional[np.ndarray]:
+        """Generate a quantum state representation for a list of words.
+
+        Args:
+            words: List of words to generate state for
+
+        Returns:
+            Quantum state vector or None if no valid words
+        """
+        if not words:
+            return None
+
+        # Initialize state vector
+        state = np.zeros(self.dims, dtype=np.complex128)
+        n_valid = 0
+
+        # Add contribution from each word
+        for word in words:
+            if word in self.patterns:
+                state += self.patterns[word]
+                n_valid += 1
+            elif word in self.vocabulary:
+                # Create pattern from vocabulary embedding
+                pattern = text_to_quantum_pattern(word, self.dims)
+                state += pattern
+                n_valid += 1
+
+        # Return normalized state if we found any valid words
+        if n_valid > 0:
+            return quantum_normalize(state)
+        return None

@@ -44,52 +44,90 @@ def calculate_density_matrix(state: np.ndarray) -> np.ndarray:
     return np.outer(state, np.conj(state))
 
 def calculate_coherence(state: np.ndarray) -> float:
-    """Calculate quantum coherence using relative phase coherence and amplitude distribution."""
+    """Calculate quantum coherence using relative phase coherence and amplitude distribution.
+
+    This function measures the internal coherence of a single quantum state through:
+    1. Phase coherence - how aligned the phases are between components
+    2. Amplitude distribution - how non-uniform the amplitudes are
+
+    The final coherence score is weighted:
+    - 70% from phase coherence (normalized to [0,1])
+    - 30% from amplitude distribution (penalizing uniform distributions)
+
+    This weighting emphasizes the importance of phase relationships while still
+    accounting for amplitude structure.
+
+    Args:
+        state: Quantum state to calculate coherence for
+
+    Returns:
+        Float between 0 and 1 representing internal coherence
+    """
     # Phase coherence
     phases = np.angle(state)
     phase_diffs = phases.reshape(-1, 1) - phases.reshape(1, -1)
     phase_coherence = float(np.mean(np.cos(phase_diffs)))
-    
+
     # Amplitude distribution (penalize uniform distributions)
     amplitudes = np.abs(state)
     amplitude_var = np.var(amplitudes)
     amplitude_score = 1.0 - np.exp(-5 * amplitude_var)  # Exponential scaling
-    
+
     # Combine scores with emphasis on phase coherence
     return float(0.7 * (phase_coherence + 1) / 2 + 0.3 * amplitude_score)
 
 def calculate_cohesion(states: List[np.ndarray]) -> float:
-    """Calculate quantum cohesion using phase alignment and state distinctness."""
+    """Calculate quantum cohesion using phase alignment and state distinctness.
+
+    This function balances two key aspects:
+    1. Quantum overlap between state pairs - measures alignment and agreement
+    2. State distinctness - ensures meaningful differences between states
+
+    The final cohesion score is weighted:
+    - 60% from average pairwise overlap (alignment)
+    - 40% from distinctness factor (unique contributions)
+
+    This balance helps prevent "echo chamber" scenarios where states simply
+    mirror each other, instead favoring interactions where each state
+    contributes unique information while maintaining sufficient alignment.
+
+    Args:
+        states: List of quantum states to calculate cohesion between
+
+    Returns:
+        Float between 0 and 1 representing cohesion, where higher values
+        indicate better balance of alignment and distinctness
+    """
     if not states or len(states) == 1:
         return 0.0
 
     cohesion = 0.0
     n_pairs = 0
     distinctness = 0.0
-    
+
     for i in range(len(states)):
         for j in range(i + 1, len(states)):
             # Calculate quantum overlap
             overlap = np.abs(np.sum(np.conj(states[i]) * states[j]))
             overlap /= np.sqrt(np.sum(np.abs(states[i]) ** 2) * np.sum(np.abs(states[j]) ** 2))
-            
+
             # Calculate state distinctness
             diff_state = states[i] - states[j]
             distinctness += np.sqrt(np.sum(np.abs(diff_state) ** 2))
-            
+
             cohesion += overlap
             n_pairs += 1
 
     if n_pairs == 0:
         return 0.0
-        
+
     # Normalize distinctness
     distinctness = distinctness / (n_pairs * np.sqrt(2))  # √2 is max difference for normalized states
-    
+
     # Combine overlap cohesion with distinctness
     avg_cohesion = cohesion / n_pairs
     distinctness_factor = 1.0 - np.exp(-2 * distinctness)  # Exponential scaling
-    
+
     return float(0.6 * avg_cohesion + 0.4 * distinctness_factor)
 
 def text_to_quantum_pattern(text: str, dims: tuple) -> np.ndarray:

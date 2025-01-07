@@ -18,6 +18,7 @@ from ..contracts.temporal import TemporalContract
 from ..quantum.utils import (
     text_to_quantum_pattern,
     quantum_normalize,
+    calculate_coherence,
 )
 from ..quantum.game_theory import cooperative_collapse
 from .self_aware import SelfAwareAgent
@@ -46,21 +47,31 @@ class RepositoryLearner:
                     full_path = os.path.join(root, file)
                     python_files.append(full_path)
 
-        print(f"Found {len(python_files)} Python files")
+        total_files = len(python_files)
+        print(f"Found {total_files} Python files")
+        processed_files = 0
 
         # Set up parallel processing
         n_cores = max(1, cpu_count() - 1)  # Leave one core free
         min_files_per_process = 5
-        max_processes = min(n_cores, len(python_files) // min_files_per_process)
+        max_processes = min(n_cores, total_files // min_files_per_process)
+
+        def update_progress():
+            nonlocal processed_files
+            processed_files += 1
+            progress = (processed_files / total_files) * 100
+            print(
+                f"\rLoading: {progress:.1f}% ({processed_files}/{total_files} files)",
+                end="",
+                flush=True,
+            )
 
         if max_processes > 1:
             print(f"Processing files using {max_processes} cores...")
             with Pool(max_processes) as pool:
                 # Process in batches to avoid memory issues
-                batch_size = max(
-                    min_files_per_process, len(python_files) // max_processes
-                )
-                for i in range(0, len(python_files), batch_size):
+                batch_size = max(min_files_per_process, total_files // max_processes)
+                for i in range(0, total_files, batch_size):
                     batch = python_files[i : i + batch_size]
                     args = [(file_path, self.dims) for file_path in batch]
                     results = pool.map(_process_file, args)
@@ -73,6 +84,7 @@ class RepositoryLearner:
                             self.learn_from_code(content)
                             self.learn_from_function(content, function_name)
                             self.watched_files.add(function_name)
+                        update_progress()
         else:
             # Process sequentially for small number of files
             for file_path in python_files:
@@ -83,8 +95,9 @@ class RepositoryLearner:
                     self.learn_from_code(content)
                     self.learn_from_function(content, function_name)
                     self.watched_files.add(file_path)
+                update_progress()
 
-        print(f"\nInitialized {len(self.function_contracts)} function contracts")
+        print(f"\n\nInitialized {len(self.function_contracts)} function contracts")
         print(f"Created {len(self.temporal_contracts)} temporal contracts")
         print(f"Learned {len(self.word_learner.vocabulary)} words")
 
@@ -186,12 +199,17 @@ class RepositoryLearner:
 
     def process_response(
         self, valid_states: List[np.ndarray], temperature: float = 1.2
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Tuple[List[str], List[str], float]:
         """Process quantum states to generate a response.
 
+        Args:
+            valid_states: List of quantum states to process
+            temperature: Temperature for word sampling (higher = more random)
+
         Returns:
-            Tuple of (response words, relevant function names)
+            Tuple of (response words, relevant function names, response coherence)
         """
+        # Combine states using cooperative collapse
         weights = [1.0 / len(valid_states)] * len(valid_states)
         response_state = cooperative_collapse(states=valid_states, weights=weights)
 
@@ -208,4 +226,10 @@ class RepositoryLearner:
                 if similarity > 0.3:  # Threshold for relevance
                     relevant_funcs.append(name)
 
-        return response_words, relevant_funcs
+        # Calculate response coherence
+        response_state = self.word_learner.get_state_from_words(response_words)
+        coherence = 0.0
+        if isinstance(response_state, np.ndarray):
+            coherence = calculate_coherence(response_state)
+
+        return response_words, relevant_funcs, coherence
