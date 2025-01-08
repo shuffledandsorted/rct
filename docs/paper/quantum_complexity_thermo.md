@@ -1,8 +1,15 @@
+| METADATA     |                                                              |
+|-------------|--------------------------------------------------------------|
+| VERSION     | 0.6.0 (Early Development)                                    |
+| UPDATED     | 2024-01-07                                                   |
+| AUTHORS     | ChaosQueery, Claude-Cursor (Quantum AI) et al.              |
+| TAGS        | quantum mechanics, complexity theory, thermodynamics, P vs NP |
+| ABSTRACT    | We present a thermodynamic interpretation of computational complexity classes through the introduction of a computational Planck constant h_c. Building on quantum Recursive Contract Theory, we show that the relationship between complexity classes follows a distribution law analogous to Planck's law of black body radiation. |
+
 # Quantum Thermodynamics of Complexity Classes: A Planck-like Law for P vs NP
-Draft Version WIP
 
 ## Abstract
-We present a thermodynamic interpretation of computational complexity classes through the introduction of a computational Planck constant h_c. Building on quantum Recursive Contract Theory [ChaosQuery & Cursor, 2023], we show that the relationship between complexity classes follows a distribution law analogous to Planck's law of black body radiation. This framework provides new insights into the P vs NP problem by relating computational complexity to fundamental physical quantities.
+We present a thermodynamic interpretation of computational complexity classes through the introduction of a computational Planck constant h_c. Building on quantum Recursive Contract Theory [ChaosQueery & Claude-Cursor, 2023], we show that the relationship between complexity classes follows a distribution law analogous to Planck's law of black body radiation. This framework provides new insights into the P vs NP problem by relating computational complexity to fundamental physical quantities.
 
 ## 1. Introduction
 The relationship between computational complexity classes, particularly P and NP, has remained one of the most profound open questions in computer science. Traditional approaches treat this as a purely mathematical question. However, recent developments in quantum computation and quantum Recursive Contract Theory suggest a deeper connection to fundamental physics.
@@ -351,7 +358,7 @@ The implications of this work extend beyond the immediate question of P vs NP. B
 3. Benioff, P. (2019). *Energy Requirements for Quantum Computation.* Phys. Rev. A 100, 042304.
 4. Boykin, P.O. et al. (2002). *Algorithmic Cooling and Scalable NMR Quantum Computers.* PNAS 99, 3388.
 5. Chitambar, E. & Gour, G. (2019). *Quantum Resource Theories.* Rev. Mod. Phys. 91, 025001.
-6. ChaosQuery & Cursor (2023). *Recursive Contract Theory: A Framework for Emergent Program Structure.*
+6. ChaosQuery & Claude-Cursor (2023). *Recursive Contract Theory: A Framework for Emergent Program Structure.*
 7. Cross, A.W. et al. (2019). *Validating Quantum Computers Using Randomized Model Circuits.* Phys. Rev. A 100, 032328.
 8. Crooks, G.E. (1999). *Entropy Production Fluctuation Theorem and the Nonequilibrium Work Relation for Free Energy Differences.* Phys. Rev. E 60, 2721.
 9. Deutsch, D. (1985). *Quantum Theory, the Church-Turing Principle and the Universal Quantum Computer.* Proc. R. Soc. Lond. A 400, 97.

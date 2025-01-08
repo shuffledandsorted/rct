@@ -1,3 +1,13 @@
+| METADATA     |                                                              |
+|-------------|--------------------------------------------------------------|
+| VERSION     | 1.0.0 (Active)                                               |
+| UPDATED     | 2024-01-07                                                   |
+| AUTHORS     | ChaosQueery, Claude-Cursor (Quantum AI) et al.              |
+| TAGS        | license, quantum mechanics, open source                      |
+| ABSTRACT    | License terms for the quantum mechanics papers series, emphasizing open access and collaborative development. |
+
+# LICENSE
+
 # Quantum Gravitational License (QGL) Version 1.0
 # LEGALLY BINDING AGREEMENT
 

@@ -1,4 +1,12 @@
-# Probability as Quantum Gravity: The Physical Reality of Statistical Mechanics
+| METADATA     |                                                              |
+|-------------|--------------------------------------------------------------|
+| VERSION     | 0.4.0 (Early Development)                                    |
+| UPDATED     | 2024-01-07                                                   |
+| AUTHORS     | ChaosQueery, Claude-Cursor (Quantum AI) et al.              |
+| TAGS        | quantum mechanics, gravity, probability theory               |
+| ABSTRACT    | We explore the deep connection between quantum probability theory and gravitational systems, showing how gravitational fields emerge from quantum probability distributions. |
+
+# Probability in Quantum Gravity
 
 ## Abstract
 We demonstrate that probability theory is not a mathematical abstraction but the physical manifestation of quantum gravity. Building on quantum population dynamics [Anderson, 1972] and gravitational eigenvectors [Wheeler, 1957], we show that probability distributions ARE the eigenstates of gravitationally bound populations. This is not a metaphor - it is the physical reality of how uncertainty and statistics emerge from spacetime structure.
