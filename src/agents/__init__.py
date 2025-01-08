@@ -1,14 +1,6 @@
 from .config import AgentConfig
 from .base import QuantumAgent
-from .recursive import RecursiveAgent
-from .flow import FlowAgent, DecayingFlowAgent
+from .flow import FlowAgent
 from .temporal import TemporalMixin
 
-__all__ = [
-    'AgentConfig',
-    'QuantumAgent',
-    'RecursiveAgent',
-    'FlowAgent',
-    'DecayingFlowAgent',
-    'TemporalMixin'
-] 
+__all__ = ["AgentConfig", "QuantumAgent", "FlowAgent", "TemporalMixin"]

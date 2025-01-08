@@ -77,13 +77,13 @@ class RepositoryLearner:
                     results = pool.map(_process_file, args)
 
                     # Process results
-                    for result in results:
+                    for file_path, result in zip(batch, results):
                         if result is not None:
                             function_name, content, pattern = result
                             self.function_contracts[function_name] = pattern
                             self.learn_from_code(content)
                             self.learn_from_function(content, function_name)
-                            self.watched_files.add(function_name)
+                            self.watched_files.add(file_path)
                         update_progress()
         else:
             # Process sequentially for small number of files
@@ -222,7 +222,12 @@ class RepositoryLearner:
         relevant_funcs = []
         for name, state in self.function_contracts.items():
             if isinstance(state, np.ndarray):
-                similarity = np.abs(np.vdot(response_state, state)) ** 2
+                # Normalize states before computing similarity
+                norm_response = response_state / np.sqrt(
+                    np.vdot(response_state, response_state)
+                )
+                norm_state = state / np.sqrt(np.vdot(state, state))
+                similarity = np.abs(np.vdot(norm_response, norm_state)) ** 2
                 if similarity > 0.3:  # Threshold for relevance
                     relevant_funcs.append(name)
 

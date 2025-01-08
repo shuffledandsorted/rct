@@ -24,6 +24,7 @@ from ..quantum.utils import (
     calculate_coherence,
     text_to_quantum_pattern,
     quantum_normalize,
+    calculate_geodesic_collapse,
 )
 from ..quantum.game_theory import cooperative_collapse
 from ..quantum.contract_crystallizer import ContractCrystallizer
@@ -34,6 +35,7 @@ from .screen_capture import ScreenCaptureAgent
 from .file_watcher import FileChangeHandler
 from .repository_learner import RepositoryLearner
 from ..contracts.query import QueryContract
+from ..quantum.contract_formation import QuantumContractFormation
 
 
 class CodeDialog(SelfDiscoveringDialog):
@@ -79,10 +81,47 @@ class CodeDialog(SelfDiscoveringDialog):
         self.dims = dims
         self.learner = RepositoryLearner(dims=dims)
         self.screen_agent = ScreenCaptureAgent(dims=dims)
-        self.user_agent = SelfAwareAgent(dims=dims)  # Persistent user agent
+        self.user_agent = SelfAwareAgent(dims=dims)
         self.is_capturing = False
         self.file_observer = None
         self.file_handler = None
+
+        # Create contract formation tool
+        self.contract_formation = QuantumContractFormation(dims)
+
+        # Register state providers
+        self.contract_formation.register_state_provider(
+            "word_learner",
+            lambda ctx: (
+                self.word_learner.get_state_from_words(ctx["input"].split())
+                if hasattr(self.word_learner, "get_state_from_words")
+                else None
+            ),
+            base_weight=0.4,
+        )
+
+        self.contract_formation.register_state_provider(
+            "screen",
+            lambda ctx: (
+                self.screen_agent.wave_fn.amplitude
+                if self.is_capturing and self.screen_agent.wave_fn is not None
+                else None
+            ),
+            base_weight=0.2,
+        )
+
+        self.contract_formation.register_state_provider(
+            "functions",
+            lambda ctx: [
+                state
+                for name, state in self.function_contracts.items()
+                if isinstance(state, np.ndarray)
+                and bool(
+                    set(ctx["input"].lower().split()) & set(name.lower().split("_"))
+                )
+            ],
+            base_weight=0.2,
+        )
 
     def initialize_repository(self, repository_path: str) -> None:
         """Initialize quantum states and contracts for existing repository files"""
@@ -315,105 +354,53 @@ class CodeDialog(SelfDiscoveringDialog):
             self.is_capturing = False
             print("[SCREEN] Screen capture stopped")
 
+    def align_dimensions(self, state: np.ndarray, target_dims: tuple) -> np.ndarray:
+        """Align state dimensions using geodesic collapse"""
+        if state.size != np.prod(target_dims):
+            # Reshape while preserving phase relationships
+            # Calculate geodesic path
+            path = calculate_geodesic_collapse(
+                state.reshape(-1), np.zeros(np.prod(target_dims), dtype=np.complex128)
+            )
+            return path.reshape(target_dims)
+        return state.reshape(target_dims)
+
+    def calculate_weight(self, state: np.ndarray) -> float:
+        """Calculate weight based on state coherence"""
+        coherence = calculate_coherence(state)
+        return np.exp(coherence) / (1 + np.exp(coherence))  # Sigmoid scaling
+
     @default
     def say(self, user_input: str) -> None:
-        """Process user input and generate a response.
+        """Process user input and generate a response using quantum RCT."""
+        # Form contract using current context
+        context = {
+            "input": user_input,
+            "previous_state": self.user_agent.self_model.amplitude,
+        }
 
-        Takes user input, collects relevant quantum states from screen capture,
-        function contracts, and word learner, then uses QueryContract to
-        negotiate understanding and generate a coherent response.
-        """
-        valid_states = []
-        weights = []  # Track importance of each state
+        # Get combined state from valid states
+        combined_state = self.contract_formation.form_contract(context)
 
-        # Add word learner state if available
-        if hasattr(self.word_learner, "get_state_from_words"):
-            word_state = self.word_learner.get_state_from_words(user_input.split())
-            if word_state is not None:
-                valid_states.append(word_state)
-                weights.append(0.4)  # Word state is important for understanding
+        if combined_state is not None:
+            # Let agent naturally converge to eigenvector
+            self.user_agent.update_with_state(combined_state)
 
-        # Include screen state in response generation if capturing
-        if self.is_capturing and self.screen_agent.wave_fn is not None:
-            screen_state = np.asarray(
-                self.screen_agent.wave_fn.amplitude, dtype=np.complex128
-            )
-            valid_states.append(screen_state)
-            weights.append(0.2)  # Screen state provides context
-
-        # Add relevant function states
-        user_words = set(user_input.lower().split())
-        for name, state in self.function_contracts.items():
-            if isinstance(state, np.ndarray):
-                # Check if function name or its parts are relevant to input
-                name_parts = set(name.lower().split("_"))
-                if user_words & name_parts:  # If there's any overlap
-                    valid_states.append(state)
-                    weights.append(0.2)  # Function states provide domain knowledge
-
-        if valid_states:
-            # Create query contract between user and knowledge base
+            # Create query contract using the converged self-model
             query_contract = QueryContract(
-                user_agent=self.user_agent,  # Use persistent user agent
+                user_agent=self.user_agent,
                 knowledge_agent=self.learner,
             )
 
-            # Normalize weights
-            total_weight = sum(weights)
-            weights = [w / total_weight for w in weights]
+            # Process query through natural quantum evolution
+            result = query_contract.process_query(user_input)
 
-            # Initialize user agent with combined valid states
-            max_dim = max(state.size for state in valid_states)
-            normalized_states = []
-            for state in valid_states:
-                if state.size < max_dim:
-                    # Pad smaller states
-                    padded = np.zeros(max_dim, dtype=np.complex128)
-                    padded[: state.size] = state.flatten()
-                    normalized_states.append(quantum_normalize(padded))
-                else:
-                    normalized_states.append(
-                        quantum_normalize(state.flatten()[:max_dim])
-                    )
-
-            # Combine states with cooperative collapse and weighted importance
-            combined_state = cooperative_collapse(normalized_states, weights=weights)
-
-            # Gradually update user agent state for temporal continuity
-            if self.user_agent.wave_fn.amplitude is not None:
-                # Mix new state with existing state (70-30 split favoring new state)
-                combined_state = (
-                    0.7 * combined_state + 0.3 * self.user_agent.wave_fn.amplitude
-                )
-                combined_state = quantum_normalize(combined_state)
-
-            self.user_agent.wave_fn.amplitude = combined_state
-
-            # Process query through contract with temperature annealing
-            max_attempts = 3
-            best_result = None
-            best_coherence = 0
-
-            for attempt in range(max_attempts):
-                temperature = 1.0 - (attempt * 0.3)  # Reduce temperature each attempt
-                result = query_contract.process_query(user_input)
-
-                if result and result["coherence"] > best_coherence:
-                    best_result = result
-                    best_coherence = result["coherence"]
-
-                if best_coherence > 0.7:  # Good enough convergence
-                    break
-
-            if best_result:
-                # Format response with metadata
-                print("Response:", best_result["knowledge"])
-                if "relevant_funcs" in best_result:
-                    print(
-                        "Related functions:", ", ".join(best_result["relevant_funcs"])
-                    )
-                print(f"Coherence: {best_result['coherence']:.3f}")
-                print(f"Energy: {best_result['energy']:.3f}")
+            if result:
+                print("Response:", result["knowledge"])
+                if "relevant_funcs" in result:
+                    print("Related functions:", ", ".join(result["relevant_funcs"]))
+                print(f"Coherence: {result['coherence']:.3f}")
+                print(f"Energy: {result['energy']:.3f}")
             else:
                 print("Could not reach sufficient coherence for response.")
         else:

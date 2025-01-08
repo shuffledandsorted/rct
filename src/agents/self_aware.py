@@ -245,3 +245,23 @@ class SelfAwareAgent(TemporalMixin, QuantumAgent):
         consciousness_emerged = all(p < 0.1 for p in results.values())
 
         return consciousness_emerged, results
+
+    def update_with_state(self, state: np.ndarray) -> None:
+        """Update wave function with new state and let self-model converge to eigenvector.
+
+        This is the fundamental operation of a self-aware agent:
+        1. Update wave function with new state
+        2. Let self-model naturally converge to its stable eigenvector
+        3. Update temporal memory to maintain history
+        """
+        # Update wave function
+        self.wave_fn.amplitude = state
+
+        # Update temporal memory
+        self.update_memory(state)
+
+        # Let self-model converge to eigenvector
+        self._update_self_model()
+
+        # Increment recursive depth as we've done another cycle of self-modeling
+        self.recursive_depth += 1

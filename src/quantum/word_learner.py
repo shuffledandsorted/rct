@@ -132,21 +132,20 @@ class QuantumWordLearner:
         probabilities = np.abs(probabilities)  # Ensure non-negative
 
         # Handle zero sum
-        if np.sum(probabilities) < 1e-10:
-            probabilities = np.ones(len(probabilities))
+        total = np.sum(probabilities)
+        if total < 1e-10:
+            return np.ones(len(probabilities)) / len(probabilities)
 
-        # First normalization
-        probabilities = probabilities / np.sum(probabilities)
-
-        # Handle numerical instability
+        # Normalize and handle numerical instability
+        probabilities = probabilities / total
         probabilities = np.maximum(
             probabilities, 0
         )  # Ensure no negative values from floating point
-        probabilities = probabilities / np.sum(probabilities)  # Renormalize
+        probabilities = probabilities / np.sum(probabilities)  # Final normalization
 
-        # Final safety check
+        # Safety check for invalid values
         if not np.all(np.isfinite(probabilities)):
-            probabilities = np.ones(len(probabilities)) / len(probabilities)
+            return np.ones(len(probabilities)) / len(probabilities)
 
         return probabilities
 

@@ -133,8 +133,9 @@ class CrystalLattice:
             # Let the system evolve
             self.wave_fn.amplitude *= np.exp(-step / steps)  # Gradual decay
 
-            # Stop if we've found a good pattern
-            if best_coherence > self.pressure:
+            # Only stop if we've found an exceptionally good pattern
+            # and we're at least halfway through the steps
+            if best_coherence > max(self.pressure * 1.5, 0.9) and step > steps // 2:
                 break
 
         return best_pattern

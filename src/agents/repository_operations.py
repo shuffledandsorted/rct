@@ -61,7 +61,7 @@ def build_word_transitions(text: str) -> Dict[str, List[str]]:
 def build_word_knowledge(text: str) -> Dict[str, np.ndarray]:
     """Build semantic vectors for words based on their context and code structure"""
     words = text.lower().split()
-    word_vectors = {}
+    word_vectors = defaultdict(lambda: defaultdict(float))
     window_size = 5
 
     # Track code context
@@ -85,14 +85,9 @@ def build_word_knowledge(text: str) -> Dict[str, np.ndarray]:
         end = min(len(words), i + window_size + 1)
         context = words[start:i] + words[i + 1 : end]
 
-        if word not in word_vectors:
-            word_vectors[word] = {}
-
         # Count context words with code awareness
         for context_word in context:
-            if context_word not in word_vectors[word]:
-                word_vectors[word][context_word] = 0
-            # Weight code context differently
+            # No need to check existence - defaultdict handles it
             if in_code_block:
                 word_vectors[word][context_word] += 0.8  # Code context
                 code_context.add(word)
